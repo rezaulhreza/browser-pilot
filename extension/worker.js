@@ -786,19 +786,26 @@ function snapshotPage(maxChars, filter, wholePage, offset) {
     ...visualOnly()
   }
 
+  /** Parts of the page whose content is not text, so the agent knows what it cannot see here. */
   function visualOnly() {
-    const canvases = [...document.querySelectorAll('canvas')].filter(shown).length
+    const count = selector => [...document.querySelectorAll(selector)].filter(shown).length
+    const parts = [
+      [count('canvas'), 'drawn graphic'],
+      [count('iframe'), 'embedded frame'],
+      [count('video'), 'video']
+    ].filter(([number]) => number)
 
-    if (!canvases) {
+    if (!parts.length) {
       return {}
     }
 
+    const list = parts.map(([number, name]) => `${number} ${name}${number > 1 ? 's' : ''}`).join(', ')
+
     return {
-      canvas_charts: canvases,
+      not_readable_as_text: list,
       note:
-        `This page draws ${canvases} canvas element(s) (usually charts). Their values are pixels, not ` +
-        'text, so they are not in `text`, and values shown only on hover need a real pointer: call ' +
-        '`show`, then use computer_use on the Chrome window.'
+        `This page has ${list}. What they show is not in \`text\`. If you need it, call \`show\` and ` +
+        'use a tool that can see the screen.'
     }
   }
 }
@@ -990,7 +997,7 @@ async function scrollPage(direction, pages) {
   if (moved === 0) {
     result.note =
       'Nothing moved: the page is already at that end, or it does not scroll in a way a script can drive. ' +
-      'If content is still missing, call `show` and scroll it with computer_use.'
+      'If content is still missing, call `show` and scroll with a tool that controls the screen.'
   }
 
   return result

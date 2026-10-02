@@ -170,8 +170,8 @@ TOOLS: List[Dict[str, Any]] = [
         "name": "hover",
         "description": (
             "Move the pointer over an element in the working tab, by `ref` or by `label`, to reveal a menu or a "
-            "tooltip that is part of the page. Read again afterwards. Tooltips drawn inside a canvas "
-            "chart are pixels and will not appear in the text."
+            "tooltip that is part of the page. Read again afterwards. Anything drawn as a picture "
+            "rather than written as text will not appear in what you read."
         ),
         "inputSchema": _schema({"ref": _REF, "label": _LABEL}),
     },
@@ -180,9 +180,9 @@ TOOLS: List[Dict[str, Any]] = [
         "description": (
             "Bring your working tab to the front of the user's Chrome window. Call this before "
             "using a screen-control tool (computer use) on it, which is the way to handle what the "
-            "page tools cannot: values drawn in a canvas chart or shown only on hover, a page that "
-            "will not scroll, drag gestures, or a click that has no effect twice. It takes over "
-            "what the user sees, so say that you are doing it."
+            "page tools cannot: content that is drawn rather than written (graphics, video, embedded "
+            "frames), a page that will not scroll, drag gestures, or a click that has no effect "
+            "twice. It takes over what the user sees, so say that you are doing it."
         ),
         "inputSchema": _schema({}),
     },

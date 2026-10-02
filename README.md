@@ -123,7 +123,7 @@ Doing several steps in one go matters more than it sounds. An agent pauses to th
 
 ## Limits
 
-- It reads text, not pictures. Numbers drawn inside a chart are not visible to it.
+- It reads text, not pictures. Anything drawn rather than written, such as a graph, a video or an embedded frame, is not visible to it. It tells the agent when a page has such parts.
 - Clicks and typing are simulated inside the page. A small number of sites ignore simulated input.
 - Pages that only load their content while you are looking at them can be slow in a background tab.
 - Chrome does not allow extensions to run on its own pages, such as `chrome://settings`, or on the Chrome Web Store.
