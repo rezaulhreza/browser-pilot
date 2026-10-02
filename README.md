@@ -99,8 +99,9 @@ The bridge has a few options of its own.
 | Tool | What it does |
 |---|---|
 | `open` | Load a web address in the agent's tab |
-| `read` | Get the page text and a numbered list of links, buttons and fields |
-| `click` | Click one of those numbered items |
+| `act` | Carry out several steps in one go, such as open a site, type a search and submit it, then hand back the page |
+| `read` | Get the page text and a numbered list of the links, buttons and fields on screen |
+| `click` | Click an item, by its number or by its visible text |
 | `type` | Fill in a field, and optionally press Enter |
 | `press_key` | Press a key such as Enter, Escape or Tab |
 | `scroll` | Scroll the page, or its main panel on pages that scroll inside a frame |
@@ -109,6 +110,8 @@ The bridge has a few options of its own.
 | `back` | Go back one page |
 | `close` | Close the agent's tab |
 | `status` | Report whether the extension is connected and what the tab shows |
+
+Doing several steps in one go matters more than it sounds. An agent pauses to think between every tool it uses, so three steps in one call is roughly three times quicker than three calls.
 
 ## Privacy and safety
 
