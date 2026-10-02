@@ -32,6 +32,7 @@ class FakeExtension:
     def __init__(self, port: int, origin: str = EXTENSION_ORIGIN, answer=None) -> None:
         self.answer = answer or (lambda command, args: {"ok": True, "result": {"echo": command, "args": args}})
         self.commands = []
+        self.dropped = threading.Event()  # set once the server has hung up on this client
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
         self.sock.sendall((
@@ -70,6 +71,8 @@ class FakeExtension:
                 self.send({"id": message["id"], **self.answer(message["command"], message["args"])})
         except (OSError, ValueError):
             pass
+        finally:
+            self.dropped.set()
 
     def send(self, payload: dict) -> None:
         data = json.dumps(payload).encode()
@@ -255,6 +258,18 @@ class WebPageGuardTest(BridgeTestCase):
     def test_a_web_page_cannot_pose_as_the_extension(self):
         self.assertEqual(self.connect(origin="https://attacker.example").status, 403)
         self.assertFalse(self.bridge.extension.connected)
+
+
+class ReplacedConnectionTest(BridgeTestCase):
+    def test_a_replaced_connection_is_hung_up_and_the_new_one_gets_the_commands(self):
+        """An extension whose connection was replaced must be told, or it goes on believing it
+        is connected and never dials again."""
+        first = self.connect()
+        second = self.connect()
+        self.assertTrue(first.dropped.wait(3), "the replaced connection was left open")
+        is_error, _text = self.call("status")
+        self.assertFalse(is_error)
+        self.assertEqual((first.commands, second.commands), ([], ["status"]))
 
 
 class PinnedExtensionTest(BridgeTestCase):

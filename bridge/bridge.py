@@ -21,6 +21,7 @@ import hmac
 import json
 import logging
 import os
+import socket
 import struct
 import threading
 import time
@@ -173,6 +174,13 @@ class Extension:
         with self._lock:
             previous, self._socket = self._socket, sock
         if previous is not None:
+            # shutdown, not just close: the old connection's thread is blocked reading, and close
+            # alone would leave the connection open, so that extension would never learn it had
+            # been replaced and would never dial again.
+            try:
+                previous.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 previous.close()
             except OSError:
