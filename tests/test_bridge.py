@@ -87,6 +87,12 @@ class FakeExtension:
         self.sock.sendall(bytes(header) + mask + masked)
 
     def close(self) -> None:
+        # shutdown (unlike close) sends FIN at once and wakes the server's blocked read, so the
+        # bridge notices the disconnection promptly rather than waiting out the socket timeout.
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         self.sock.close()
 
 
@@ -203,9 +209,10 @@ class ToolCallTest(BridgeTestCase):
     def test_calls_fail_cleanly_once_the_extension_disconnects(self):
         extension = self.connect()
         extension.close()
-        deadline = time.time() + 2
+        deadline = time.time() + 5
         while self.bridge.extension.connected and time.time() < deadline:
             time.sleep(0.01)
+        self.assertFalse(self.bridge.extension.connected, "the bridge did not notice the extension disconnecting")
         is_error, text = self.call("read")
         self.assertTrue(is_error)
         self.assertIn("not connected", text)
