@@ -4,11 +4,11 @@ Text to paste into the Chrome Web Store developer dashboard when the extension i
 
 ## Name
 
-Hermes in Chrome
+Browser Yolo Agent
 
 ## Short description (132 characters at most)
 
-Gives your own AI agent one tab to work in. Unofficial community project, not made by Nous Research.
+Gives your own AI agent one tab to work in, inside the Chrome you already use. Your other tabs stay private.
 
 ## Category
 
@@ -16,7 +16,7 @@ Workflow and planning
 
 ## Detailed description
 
-Hermes in Chrome gives your own AI agent one tab to work in, inside the Chrome you already use.
+Browser Yolo Agent gives your own AI agent one tab to work in, inside the Chrome you already use.
 
 The agent can open pages, read them, click, type and scroll in that tab. It cannot see or change any of your other tabs, so you carry on with your own work while it gets on with its task.
 
@@ -39,7 +39,7 @@ Privacy
 
 Nothing is collected. There is no account, no analytics and no server run by this project. Page content from the agent's tab goes only to the bridge on your own computer.
 
-This is an unofficial community project. It is not made by, or connected with, Nous Research. The source code is open under the MIT licence.
+This is an independent open-source project, released under the MIT licence. It is not connected with the makers of any AI agent.
 
 ## Single purpose
 

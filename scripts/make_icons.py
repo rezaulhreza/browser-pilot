@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the extension icons (a white H on an orange rounded square) as PNG files.
+"""Draw the extension icons (a white ring and dot on an orange rounded square) as PNG files.
 
 Standard library only, so the icons can be regenerated anywhere without an image editor.
 Run from the repository root: ``python3 scripts/make_icons.py``.
@@ -23,16 +23,10 @@ def _inside_rounded_square(x: float, y: float, size: float, radius: float) -> bo
     return (x - nearest_x) ** 2 + (y - nearest_y) ** 2 <= radius ** 2
 
 
-def _inside_letter(x: float, y: float, size: float) -> bool:
-    top, bottom = size * 0.24, size * 0.76
-    left, right = size * 0.27, size * 0.73
-    bar = size * 0.13
-    if not top <= y <= bottom:
-        return False
-    in_left = left <= x <= left + bar
-    in_right = right - bar <= x <= right
-    in_cross = left <= x <= right and abs(y - size / 2) <= bar / 2
-    return in_left or in_right or in_cross
+def _inside_mark(x: float, y: float, size: float) -> bool:
+    """A ring with a dot at its centre."""
+    distance = ((x - size / 2) ** 2 + (y - size / 2) ** 2) ** 0.5
+    return distance <= size * 0.09 or size * 0.22 <= distance <= size * 0.32
 
 
 def render(size: int) -> bytes:
@@ -48,7 +42,7 @@ def render(size: int) -> bytes:
                     y = row * SUPERSAMPLE + sub_y + 0.5
                     if not _inside_rounded_square(x, y, big, big * 0.22):
                         continue
-                    colour = WHITE if _inside_letter(x, y, big) else ORANGE
+                    colour = WHITE if _inside_mark(x, y, big) else ORANGE
                     red += colour[0]
                     green += colour[1]
                     blue += colour[2]

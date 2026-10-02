@@ -1,10 +1,8 @@
-# Hermes in Chrome
+# Browser Yolo Agent
 
-Hermes in Chrome gives your own AI agent one tab to work in, inside the Chrome you already use. The agent can open pages, read them, click, type and scroll in that tab. It cannot see or change any of your other tabs, so you carry on with your own work while it gets on with its task.
+Browser Yolo Agent gives your own AI agent one tab to work in, inside the Chrome you already use. The agent can open pages, read them, click, type and scroll in that tab. It cannot see or change any of your other tabs, so you carry on with your own work while it gets on with its task.
 
-It was written for [Hermes Agent](https://github.com/NousResearch/hermes-agent) and works with any agent that supports MCP (Model Context Protocol, the common way AI agents connect to tools), such as Claude Code or Cursor.
-
-This is an unofficial community project. It is not made by, or connected with, Nous Research.
+It works with any agent that supports MCP (Model Context Protocol, the common way AI agents connect to tools), such as [Hermes Agent](https://github.com/NousResearch/hermes-agent), Claude Code or Cursor. It is an independent open-source project and is not connected with any of them.
 
 ## What you get
 
@@ -34,7 +32,7 @@ On macOS or Linux, run this from the folder you downloaded.
 ./scripts/install.sh
 ```
 
-It copies the bridge to `~/.local/share/hermes-in-chrome` and sets it to start when you log in. To remove it again, run `./scripts/uninstall.sh`.
+It copies the bridge to `~/.local/share/browser-yolo-agent` and sets it to start when you log in. To remove it again, run `./scripts/uninstall.sh`.
 
 On Windows, or if you would rather start it yourself, run the bridge directly and leave it running.
 
@@ -71,7 +69,7 @@ claude mcp add --transport http chrome http://127.0.0.1:8790/mcp
 
 Other agents take the same address wherever they list their MCP servers.
 
-Now ask your agent to look something up on a website. A tab group named Hermes appears, and the agent works inside it.
+Now ask your agent to look something up on a website. A tab group named Agent appears, and the agent works inside it.
 
 ## Settings
 
@@ -80,7 +78,7 @@ Click the toolbar icon to open the settings page.
 | Setting | What it does | Default |
 |---|---|---|
 | Bridge port | The port the bridge listens on. Change it only if you started the bridge on another port. | 8790 |
-| Tab group name | The name shown on the agent's tab group and on its label. | Hermes |
+| Tab group name | The name shown on the agent's tab group and on its label. | Agent |
 | Colour | The colour of the tab group, the border and the agent's pointer. | Orange |
 | Show border, label and pointer | Switch the markings on the agent's tab on or off. | On |
 | Sites the agent may never open | One site per line. A name also covers everything under it. | None |
@@ -92,7 +90,7 @@ The bridge has a few options of its own.
 | `--port` | Port to listen on. | 8790 |
 | `--idle-close-seconds` | Close the agent's tab after this long without activity. Use 0 to leave it open. | 600 |
 | `--extension-id` | Accept only this extension. Copy the ID from `chrome://extensions`. | Any |
-| `HERMES_IN_CHROME_TOKEN` | Set this environment variable to make agents send a password with every request. | Not set |
+| `BROWSER_YOLO_AGENT_TOKEN` | Set this environment variable to make agents send a password with every request. | Not set |
 
 ## What the agent can do
 

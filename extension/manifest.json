@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Hermes in Chrome",
+  "name": "Browser Yolo Agent",
   "version": "0.1.0",
-  "description": "Gives your own AI agent one tab to work in. Unofficial community project, not made by Nous Research.",
+  "description": "Gives your own AI agent one tab to work in, inside the Chrome you already use. Your other tabs stay private.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs", "tabGroups", "scripting", "alarms", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "worker.js" },
   "options_ui": { "page": "options.html", "open_in_tab": true },
   "action": {
-    "default_title": "Hermes in Chrome",
+    "default_title": "Browser Yolo Agent",
     "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png" }
   },
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }

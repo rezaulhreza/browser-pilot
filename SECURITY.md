@@ -1,6 +1,6 @@
 # Security
 
-Hermes in Chrome lets a program on your computer act in your real, signed-in browser. This page says plainly what guards that, and what does not.
+Browser Yolo Agent lets a program on your computer act in your real, signed-in browser. This page says plainly what guards that, and what does not.
 
 ## What the project protects against
 
@@ -18,7 +18,7 @@ Hermes in Chrome lets a program on your computer act in your real, signed-in bro
 
 ## What it does not protect against
 
-**Other programs on your computer.** Any program running as you can talk to the bridge and so drive the agent's tab. A program that can do that could already do worse. If you share the computer, set `HERMES_IN_CHROME_TOKEN` so that agents must send a password.
+**Other programs on your computer.** Any program running as you can talk to the bridge and so drive the agent's tab. A program that can do that could already do worse. If you share the computer, set `BROWSER_YOLO_AGENT_TOKEN` so that agents must send a password.
 
 **Another Chrome extension you have installed.** Unless you set `--extension-id`, a different extension could connect to the bridge in place of this one and feed your agent false page content.
 
