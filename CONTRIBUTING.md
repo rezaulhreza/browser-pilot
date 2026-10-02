@@ -8,7 +8,7 @@ Thank you for helping. Small, focused changes are the easiest to review and the 
 |---|---|
 | `extension/` | The Chrome extension. `worker.js` does the work, `options.*` is the settings page. |
 | `bridge/` | `bridge.py`, the program that passes messages between an agent and the extension. |
-| `scripts/` | Install and uninstall scripts, and the script that draws the icons. |
+| `scripts/` | Install and uninstall scripts, the script that draws the icons, and `package.sh`, which builds the zip for the Chrome Web Store. |
 | `tests/` | Tests for the bridge. |
 | `docs/` | Text for the Chrome Web Store listing. |
 
