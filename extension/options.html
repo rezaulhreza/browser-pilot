@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hermes in Chrome settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Hermes in Chrome</h1>
+      <p class="lead">
+        Your agent works in one tab, kept in its own tab group. It cannot see or change any other tab.
+      </p>
+
+      <p id="status" class="status" role="status">Checking the connection</p>
+
+      <form id="settings">
+        <section>
+          <h2>Connection</h2>
+          <label for="port">Bridge port</label>
+          <input id="port" name="port" type="number" min="1" max="65535" required />
+          <p class="hint">
+            The bridge is the small program on this computer that your agent talks to. It listens on
+            127.0.0.1 and this port. Change it only if you started the bridge on a different port.
+          </p>
+        </section>
+
+        <section>
+          <h2>The agent's tab</h2>
+          <label for="groupTitle">Tab group name</label>
+          <input id="groupTitle" name="groupTitle" type="text" maxlength="24" required />
+
+          <label for="groupColor">Colour</label>
+          <select id="groupColor" name="groupColor">
+            <option value="orange">Orange</option>
+            <option value="blue">Blue</option>
+            <option value="green">Green</option>
+            <option value="red">Red</option>
+            <option value="purple">Purple</option>
+            <option value="pink">Pink</option>
+            <option value="cyan">Cyan</option>
+            <option value="yellow">Yellow</option>
+            <option value="grey">Grey</option>
+          </select>
+          <p class="hint">Used for the tab group, the border around the page and the agent's pointer.</p>
+
+          <label class="check">
+            <input id="showIndicator" name="showIndicator" type="checkbox" />
+            Show a border, a label and the agent's pointer on the tab it is working in
+          </label>
+        </section>
+
+        <section>
+          <h2>Sites the agent may never open</h2>
+          <label for="blockedSites">One site per line</label>
+          <textarea id="blockedSites" name="blockedSites" rows="6" spellcheck="false" placeholder="mybank.example"></textarea>
+          <p class="hint">
+            A name also covers everything under it, so <code>example.com</code> blocks
+            <code>accounts.example.com</code> too. If a link leads the agent to a blocked site, its tab is
+            cleared straight away.
+          </p>
+        </section>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <button type="button" id="reset" class="plain">Restore defaults</button>
+          <span id="saved" class="saved" role="status"></span>
+        </div>
+      </form>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
