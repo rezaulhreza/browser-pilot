@@ -804,7 +804,7 @@ function snapshotPage(maxChars, filter, wholePage, offset) {
     return {
       not_readable_as_text: list,
       note:
-        `This page has ${list}. What they show is not in \`text\`. If you need it, call \`show\` and ` +
+        `This page has ${list}. That content is not in \`text\`. If you need it, call \`show\` and ` +
         'use a tool that can see the screen.'
     }
   }
