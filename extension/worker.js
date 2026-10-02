@@ -1,5 +1,5 @@
 /**
- * Browser Yolo Agent, the browser half.
+ * Browser Pilot, the browser half.
  *
  * Holds a WebSocket to the local bridge (127.0.0.1) and carries out the agent's commands in ONE
  * working tab, kept in its own tab group. Everything is addressed at that tab only: the agent
@@ -10,7 +10,7 @@
 
 const DEFAULTS = {
   port: 8790,
-  groupTitle: 'Agent',
+  groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
   // Host names the agent may never open, one per entry. A name also covers its subdomains.
@@ -96,7 +96,7 @@ async function connect() {
 
   ws.addEventListener('open', () => {
     chrome.action.setBadgeText({ text: '' })
-    chrome.action.setTitle({ title: 'Browser Yolo Agent is connected' })
+    chrome.action.setTitle({ title: 'Browser Pilot is connected' })
     // Traffic on the socket is what keeps a Manifest V3 service worker from being suspended.
     clearInterval(keepalive)
     keepalive = setInterval(() => {
@@ -134,7 +134,7 @@ async function connect() {
       clearInterval(keepalive)
       chrome.action.setBadgeText({ text: '!' })
       chrome.action.setBadgeBackgroundColor({ color: '#b45309' })
-      chrome.action.setTitle({ title: 'Browser Yolo Agent cannot reach the bridge' })
+      chrome.action.setTitle({ title: 'Browser Pilot cannot reach the bridge' })
       // Re-dial soon; the alarm below is the slower safety net for a suspended worker.
       setTimeout(connect, 2000)
     }
@@ -553,13 +553,13 @@ function paintIndicator(look) {
   // Already set up on this page with the same look: leave it, so the pointer keeps its place.
   const signature = JSON.stringify(look)
 
-  if (window.__byaLook === signature && document.getElementById('__bya_style')) {
+  if (window.__pilotLook === signature && document.getElementById('__pilot_style')) {
     return
   }
 
-  window.__byaLook = signature
+  window.__pilotLook = signature
 
-  for (const id of ['__bya_style', '__bya_frame', '__bya_badge', '__bya_cursor']) {
+  for (const id of ['__pilot_style', '__pilot_frame', '__pilot_badge', '__pilot_cursor']) {
     document.getElementById(id)?.remove()
   }
 
@@ -572,7 +572,7 @@ function paintIndicator(look) {
 
   const clean = text => String(text || '').replace(/\s+/g, ' ').trim()
 
-  window.__byaShown = element => {
+  window.__pilotShown = element => {
     const box = element.getBoundingClientRect()
 
     if (box.width < 2 || box.height < 2) {
@@ -584,7 +584,7 @@ function paintIndicator(look) {
     return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) !== 0
   }
 
-  window.__byaLabel = element =>
+  window.__pilotLabel = element =>
     clean(
       element.getAttribute('aria-label') ||
         element.innerText ||
@@ -596,7 +596,7 @@ function paintIndicator(look) {
     ).slice(0, 90)
 
   /** Every interactive element a person could see and use, in page order. */
-  window.__byaCollect = () => {
+  window.__pilotCollect = () => {
     const elements = []
 
     for (const element of document.querySelectorAll(SELECTOR)) {
@@ -604,7 +604,7 @@ function paintIndicator(look) {
         break
       }
 
-      if (window.__byaShown(element) && !element.disabled) {
+      if (window.__pilotShown(element) && !element.disabled) {
         elements.push(element)
       }
     }
@@ -613,9 +613,9 @@ function paintIndicator(look) {
   }
 
   /** The element a tool call means: by `ref` from the last read, or by its visible `label`. */
-  window.__byaResolve = (target, wantsText = false) => {
+  window.__pilotResolve = (target, wantsText = false) => {
     if (Number.isInteger(target?.ref)) {
-      const element = window.__byaElements?.[target.ref]
+      const element = window.__pilotElements?.[target.ref]
 
       return element && element.isConnected
         ? { element }
@@ -628,8 +628,8 @@ function paintIndicator(look) {
       return { error: 'Say which element: give its `ref` from a read, or its visible text as `label`.' }
     }
 
-    let pool = window.__byaCollect()
-      .map(element => ({ element, name: window.__byaLabel(element).toLowerCase() }))
+    let pool = window.__pilotCollect()
+      .map(element => ({ element, name: window.__pilotLabel(element).toLowerCase() }))
       .filter(entry => entry.name)
 
     if (wantsText) {
@@ -650,16 +650,16 @@ function paintIndicator(look) {
 
   // The agent's own pointer: an arrow drawn on the page that glides to whatever the agent is
   // about to act on. It is separate from the user's mouse pointer, which is never moved.
-  window.__byaPointTo = (x, y) => {
+  window.__pilotPointTo = (x, y) => {
     if (!look.show) {
       return Promise.resolve()
     }
 
-    let cursor = document.getElementById('__bya_cursor')
+    let cursor = document.getElementById('__pilot_cursor')
 
     if (!cursor) {
       cursor = document.createElement('div')
-      cursor.id = '__bya_cursor'
+      cursor.id = '__pilot_cursor'
       cursor.innerHTML =
         '<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2l15 7.5-6.4 2.1L9.5 18z" /></svg>'
       cursor.style.transform = `translate(${window.innerWidth / 2}px, ${window.innerHeight - 80}px)`
@@ -679,25 +679,25 @@ function paintIndicator(look) {
   // stays even when the standing border and badge are switched off.
   const style = document.createElement('style')
 
-  style.id = '__bya_style'
+  style.id = '__pilot_style'
   style.textContent = `
-    :root { --bya-accent: ${look.color}; }
-    #__bya_frame { position: fixed; inset: 0; z-index: 2147483646; pointer-events: none;
-      box-shadow: inset 0 0 0 3px var(--bya-accent); animation: __bya_breathe 2.4s ease-in-out infinite; }
-    #__bya_badge { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    :root { --pilot-accent: ${look.color}; }
+    #__pilot_frame { position: fixed; inset: 0; z-index: 2147483646; pointer-events: none;
+      box-shadow: inset 0 0 0 3px var(--pilot-accent); animation: __pilot_breathe 2.4s ease-in-out infinite; }
+    #__pilot_badge { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
       z-index: 2147483647; pointer-events: none; padding: 6px 12px; border-radius: 999px;
-      background: #1c1917; color: #fff; border: 2px solid var(--bya-accent);
+      background: #1c1917; color: #fff; border: 2px solid var(--pilot-accent);
       font: 600 12px/1.2 system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); }
-    #__bya_cursor { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
+    #__pilot_cursor { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
       transition: transform .4s cubic-bezier(.2, .8, .2, 1); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
-    #__bya_cursor path { fill: var(--bya-accent); stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
-    .__bya_ring { position: fixed; z-index: 2147483647; pointer-events: none; border-radius: 8px;
-      box-shadow: 0 0 0 3px var(--bya-accent); animation: __bya_ping .7s ease-out forwards; }
-    @keyframes __bya_breathe { 50% { box-shadow: inset 0 0 0 6px var(--bya-accent); } }
-    @keyframes __bya_ping { from { opacity: 1; transform: scale(1.25); } to { opacity: 0; transform: scale(1); } }
+    #__pilot_cursor path { fill: var(--pilot-accent); stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
+    .__pilot_ring { position: fixed; z-index: 2147483647; pointer-events: none; border-radius: 8px;
+      box-shadow: 0 0 0 3px var(--pilot-accent); animation: __pilot_ping .7s ease-out forwards; }
+    @keyframes __pilot_breathe { 50% { box-shadow: inset 0 0 0 6px var(--pilot-accent); } }
+    @keyframes __pilot_ping { from { opacity: 1; transform: scale(1.25); } to { opacity: 0; transform: scale(1); } }
     @media (prefers-reduced-motion: reduce) {
-      #__bya_frame, .__bya_ring { animation: none; }
-      #__bya_cursor { transition: none; }
+      #__pilot_frame, .__pilot_ring { animation: none; }
+      #__pilot_cursor { transition: none; }
     }
   `
   document.documentElement.append(style)
@@ -708,11 +708,11 @@ function paintIndicator(look) {
 
   const frame = document.createElement('div')
 
-  frame.id = '__bya_frame'
+  frame.id = '__pilot_frame'
 
   const badge = document.createElement('div')
 
-  badge.id = '__bya_badge'
+  badge.id = '__pilot_badge'
   badge.textContent = look.label
 
   document.documentElement.append(frame, badge)
@@ -720,12 +720,12 @@ function paintIndicator(look) {
 
 function snapshotPage(maxChars, filter, wholePage, offset) {
   const clean = text => String(text || '').replace(/\s+/g, ' ').trim()
-  const shown = window.__byaShown
-  const label = window.__byaLabel
-  const elements = window.__byaCollect()
+  const shown = window.__pilotShown
+  const label = window.__pilotLabel
+  const elements = window.__pilotCollect()
 
   // Refs index into this list until the next read.
-  window.__byaElements = elements
+  window.__pilotElements = elements
 
   const onScreen = element => {
     const box = element.getBoundingClientRect()
@@ -811,7 +811,7 @@ function snapshotPage(maxChars, filter, wholePage, offset) {
 }
 
 async function clickElement(target) {
-  const { element, error } = window.__byaResolve(target)
+  const { element, error } = window.__pilotResolve(target)
 
   if (error) {
     return { error }
@@ -821,11 +821,11 @@ async function clickElement(target) {
 
   const box = element.getBoundingClientRect()
 
-  await window.__byaPointTo?.(box.left + box.width / 2, box.top + box.height / 2)
+  await window.__pilotPointTo?.(box.left + box.width / 2, box.top + box.height / 2)
 
   const ring = document.createElement('div')
 
-  ring.className = '__bya_ring'
+  ring.className = '__pilot_ring'
   ring.style.cssText = `left:${box.left - 4}px;top:${box.top - 4}px;width:${box.width + 8}px;height:${box.height + 8}px`
   document.documentElement.append(ring)
   setTimeout(() => ring.remove(), 800)
@@ -847,7 +847,7 @@ async function clickElement(target) {
 }
 
 async function typeIntoElement(target, text, submit) {
-  const { element, error } = window.__byaResolve(target, true)
+  const { element, error } = window.__pilotResolve(target, true)
 
   if (error) {
     return { error }
@@ -861,7 +861,7 @@ async function typeIntoElement(target, text, submit) {
 
   const place = element.getBoundingClientRect()
 
-  await window.__byaPointTo?.(place.left + Math.min(24, place.width / 2), place.top + place.height / 2)
+  await window.__pilotPointTo?.(place.left + Math.min(24, place.width / 2), place.top + place.height / 2)
   element.focus()
 
   const tag = element.tagName
@@ -970,7 +970,7 @@ async function scrollPage(direction, pages) {
     direction === 'top' ? 0 : direction === 'bottom' ? box.scrollHeight : before + (direction === 'up' ? -1 : 1) * screen * pages
   const area = box === page ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } : box.getBoundingClientRect()
 
-  await window.__byaPointTo?.(area.left + area.width / 2, area.top + area.height / 2)
+  await window.__pilotPointTo?.(area.left + area.width / 2, area.top + area.height / 2)
 
   // Smooth scrolling only runs in a tab someone can see; a background tab would never arrive.
   const watched = document.visibilityState === 'visible' && !matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -1004,7 +1004,7 @@ async function scrollPage(direction, pages) {
 }
 
 async function hoverElement(target) {
-  const { element, error } = window.__byaResolve(target)
+  const { element, error } = window.__pilotResolve(target)
 
   if (error) {
     return { error }
@@ -1014,11 +1014,11 @@ async function hoverElement(target) {
 
   const box = element.getBoundingClientRect()
 
-  await window.__byaPointTo?.(box.left + box.width / 2, box.top + box.height / 2)
+  await window.__pilotPointTo?.(box.left + box.width / 2, box.top + box.height / 2)
 
   const ring = document.createElement('div')
 
-  ring.className = '__bya_ring'
+  ring.className = '__pilot_ring'
   ring.style.cssText = `left:${box.left - 4}px;top:${box.top - 4}px;width:${box.width + 8}px;height:${box.height + 8}px`
   document.documentElement.append(ring)
   setTimeout(() => ring.remove(), 800)

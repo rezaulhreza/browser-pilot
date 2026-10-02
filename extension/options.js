@@ -1,7 +1,7 @@
 // Keep in step with DEFAULTS in worker.js. The worker applies saved settings at once.
 const DEFAULTS = {
   port: 8790,
-  groupTitle: 'Agent',
+  groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
   blockedSites: []

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Browser Yolo Agent: the local bridge between an AI agent and the browser extension.
+"""Browser Pilot: the local bridge between an AI agent and the browser extension.
 
 One long-lived process with two faces, both on the loopback interface only:
 
 * ``POST /mcp`` is an MCP server (streamable HTTP, JSON responses). The agent connects here.
   Every agent process shares this one endpoint, so nothing is started per session.
-* ``GET /ext`` is a WebSocket held open by the Browser Yolo Agent extension. Tool calls are
+* ``GET /ext`` is a WebSocket held open by the Browser Pilot extension. Tool calls are
   forwarded over it and answered by the extension, which works only in its own tab.
 
 Standard library only (Python 3.9 or newer), so there is nothing to install and nothing to keep
@@ -35,13 +35,13 @@ DEFAULT_PORT = 8790
 DEFAULT_IDLE_CLOSE_SECONDS = 600
 COMMAND_TIMEOUT_SECONDS = 45
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-SERVER_INFO = {"name": "browser-yolo-agent", "version": __version__}
+SERVER_INFO = {"name": "browser-pilot", "version": __version__}
 DEFAULT_PROTOCOL = "2025-06-18"
 
-log = logging.getLogger("browser-yolo-agent")
+log = logging.getLogger("browser-pilot")
 
 NOT_CONNECTED = (
-    "The Browser Yolo Agent extension is not connected. Chrome may be closed, or the extension is "
+    "The Browser Pilot extension is not connected. Chrome may be closed, or the extension is "
     "not installed or is switched off (chrome://extensions). Tell the user; do not try another "
     "way into their browser."
 )
@@ -337,7 +337,7 @@ class Bridge:
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "BrowserYoloAgent/" + __version__
+    server_version = "BrowserPilot/" + __version__
 
     @property
     def bridge(self) -> Bridge:
@@ -531,18 +531,18 @@ def build_server(port: int = DEFAULT_PORT, bridge: Optional[Bridge] = None) -> T
 def main(argv: Optional[List[str]] = None) -> None:
     env = os.environ
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--port", type=int, default=int(env.get("BROWSER_YOLO_AGENT_PORT", DEFAULT_PORT)),
+    parser.add_argument("--port", type=int, default=int(env.get("BROWSER_PILOT_PORT", DEFAULT_PORT)),
                         help=f"Port on 127.0.0.1 (default {DEFAULT_PORT}).")
     parser.add_argument("--idle-close-seconds", type=int,
-                        default=int(env.get("BROWSER_YOLO_AGENT_IDLE_CLOSE_SECONDS", DEFAULT_IDLE_CLOSE_SECONDS)),
+                        default=int(env.get("BROWSER_PILOT_IDLE_CLOSE_SECONDS", DEFAULT_IDLE_CLOSE_SECONDS)),
                         help="Close the working tab after this long without a command. 0 never closes it.")
     parser.add_argument("--extension-id", action="append", default=[],
                         help="Only accept this extension ID (repeatable). Default accepts any extension.")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
-    extension_ids = args.extension_id or [item for item in env.get("BROWSER_YOLO_AGENT_EXTENSION_IDS", "").split(",") if item]
-    bridge = Bridge(args.idle_close_seconds, extension_ids, env.get("BROWSER_YOLO_AGENT_TOKEN", ""))
+    extension_ids = args.extension_id or [item for item in env.get("BROWSER_PILOT_EXTENSION_IDS", "").split(",") if item]
+    bridge = Bridge(args.idle_close_seconds, extension_ids, env.get("BROWSER_PILOT_TOKEN", ""))
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     threading.Thread(target=bridge.sweep_forever, daemon=True).start()

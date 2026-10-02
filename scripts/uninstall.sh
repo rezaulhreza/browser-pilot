@@ -1,10 +1,10 @@
 #!/bin/sh
-# Stop the Browser Yolo Agent bridge and remove what install.sh put in place.
+# Stop the Browser Pilot bridge and remove what install.sh put in place.
 # The extension is removed separately, on chrome://extensions.
 set -eu
 
-TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/browser-yolo-agent"
-LABEL="io.github.rezaulhreza.browser-yolo-agent"
+TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/browser-pilot"
+LABEL="io.github.rezaulhreza.browser-pilot"
 
 case "$(uname -s)" in
   Darwin)
@@ -13,8 +13,8 @@ case "$(uname -s)" in
     ;;
   Linux)
     if command -v systemctl >/dev/null 2>&1; then
-      systemctl --user disable --now browser-yolo-agent.service 2>/dev/null || true
-      rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/browser-yolo-agent.service"
+      systemctl --user disable --now browser-pilot.service 2>/dev/null || true
+      rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/browser-pilot.service"
       systemctl --user daemon-reload
     fi
     ;;

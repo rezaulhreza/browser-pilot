@@ -1,12 +1,12 @@
 #!/bin/sh
-# Install the Browser Yolo Agent bridge and set it to start when you log in.
+# Install the Browser Pilot bridge and set it to start when you log in.
 # macOS uses a launchd agent, Linux a systemd user service. Safe to run again to update.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/browser-yolo-agent"
-PORT="${BROWSER_YOLO_AGENT_PORT:-8790}"
-LABEL="io.github.rezaulhreza.browser-yolo-agent"
+TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/browser-pilot"
+PORT="${BROWSER_PILOT_PORT:-8790}"
+LABEL="io.github.rezaulhreza.browser-pilot"
 
 PYTHON="$(command -v python3 || true)"
 if [ -z "$PYTHON" ]; then
@@ -37,15 +37,15 @@ case "$(uname -s)" in
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>StandardOutPath</key><string>$HOME/Library/Logs/browser-yolo-agent.log</string>
-  <key>StandardErrorPath</key><string>$HOME/Library/Logs/browser-yolo-agent.log</string>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/browser-pilot.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/browser-pilot.log</string>
 </dict>
 </plist>
 PLIST
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$PLIST"
     echo "The bridge is running and will start when you log in."
-    echo "Log file  $HOME/Library/Logs/browser-yolo-agent.log"
+    echo "Log file  $HOME/Library/Logs/browser-pilot.log"
     ;;
   Linux)
     if ! command -v systemctl >/dev/null 2>&1; then
@@ -55,9 +55,9 @@ PLIST
     fi
     UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     mkdir -p "$UNIT_DIR"
-    cat > "$UNIT_DIR/browser-yolo-agent.service" <<UNIT
+    cat > "$UNIT_DIR/browser-pilot.service" <<UNIT
 [Unit]
-Description=Browser Yolo Agent bridge
+Description=Browser Pilot bridge
 
 [Service]
 ExecStart=$PYTHON $TARGET/bridge.py --port $PORT
@@ -67,9 +67,9 @@ Restart=on-failure
 WantedBy=default.target
 UNIT
     systemctl --user daemon-reload
-    systemctl --user enable --now browser-yolo-agent.service
+    systemctl --user enable --now browser-pilot.service
     echo "The bridge is running and will start when you log in."
-    echo "Logs  journalctl --user -u browser-yolo-agent"
+    echo "Logs  journalctl --user -u browser-pilot"
     ;;
   *)
     echo "This script supports macOS and Linux. Start the bridge yourself with"

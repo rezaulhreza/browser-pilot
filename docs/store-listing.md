@@ -4,7 +4,7 @@ Text to paste into the Chrome Web Store developer dashboard when the extension i
 
 ## Name
 
-Browser Yolo Agent
+Browser Pilot
 
 ## Short description (132 characters at most)
 
@@ -16,7 +16,7 @@ Workflow and planning
 
 ## Detailed description
 
-Browser Yolo Agent gives your own AI agent one tab to work in, inside the Chrome you already use.
+Browser Pilot gives your own AI agent one tab to work in, inside the Chrome you already use.
 
 The agent can open pages, read them, click, type and scroll in that tab. It cannot see or change any of your other tabs, so you carry on with your own work while it gets on with its task.
 

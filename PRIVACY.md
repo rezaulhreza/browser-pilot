@@ -1,6 +1,6 @@
 # Privacy
 
-Browser Yolo Agent collects nothing. There is no account, no analytics, no advertising and no server run by this project.
+Browser Pilot collects nothing. There is no account, no analytics, no advertising and no server run by this project.
 
 ## What the extension can see
 
