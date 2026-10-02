@@ -25,6 +25,7 @@ const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
 const MAX_STEPS = 12
+const AGENT_POPUP_WINDOW_MS = 4000
 // What `act` may chain. Opening is allowed so one call can go to a page and work on it.
 const STEP_ACTIONS = new Set(['open', 'click', 'type', 'press_key', 'scroll', 'hover', 'back', 'wait', 'wait_for'])
 
@@ -75,6 +76,8 @@ function indicator() {
 }
 
 let socket = null
+// When the agent last clicked, typed or pressed a key: the only moments its page may open a tab.
+let lastAgentActionAt = 0
 let keepalive = null
 
 // ── connection ───────────────────────────────────────────────────────────────────────────────
@@ -292,20 +295,26 @@ async function settle(tabId) {
   return describe(tabId)
 }
 
-// A link or script in the working tab that opens a NEW tab is pulled back into the working tab,
-// so the agent never spreads beyond its one tab.
+// A page the AGENT's action opens in a NEW tab is pulled back into the working tab, so the agent
+// never spreads beyond its one tab. A tab the user opens while looking at the working tab also
+// names it as its opener, so only a web page that appears moments after an agent action counts:
+// the user's own new tab (Cmd+T, or a link they open themselves) is left alone.
 chrome.tabs.onCreated.addListener(async created => {
+  const url = created.pendingUrl || created.url || ''
+
+  if (Date.now() - lastAgentActionAt > AGENT_POPUP_WINDOW_MS || !/^https?:/.test(url)) {
+    return
+  }
+
   const tab = await workingTab()
 
   if (!tab || created.openerTabId !== tab.id) {
     return
   }
 
-  const url = created.pendingUrl || created.url
-
   await chrome.tabs.remove(created.id).catch(() => undefined)
 
-  if (url && /^https?:/.test(url) && !blockedBy(url)) {
+  if (!blockedBy(url)) {
     await chrome.tabs.update(tab.id, { url }).catch(() => undefined)
   }
 })
@@ -383,6 +392,7 @@ const COMMANDS = {
   async click({ ref, label }) {
     const tab = await readyTab()
 
+    lastAgentActionAt = Date.now()
     await inPage(tab.id, clickElement, [targetOf(ref, label)])
 
     return settle(tab.id)
@@ -391,6 +401,7 @@ const COMMANDS = {
   async type({ ref, label, text, submit }) {
     const tab = await readyTab()
 
+    lastAgentActionAt = Date.now()
     await inPage(tab.id, typeIntoElement, [targetOf(ref, label), String(text ?? ''), Boolean(submit)])
 
     return submit ? settle(tab.id) : describe(tab.id)
@@ -399,6 +410,7 @@ const COMMANDS = {
   async press_key({ key }) {
     const tab = await readyTab()
 
+    lastAgentActionAt = Date.now()
     await inPage(tab.id, pressKey, [String(key || '')])
 
     return settle(tab.id)
