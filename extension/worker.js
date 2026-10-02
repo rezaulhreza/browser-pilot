@@ -24,6 +24,9 @@ const GROUP_COLORS = {
 const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
+const MAX_STEPS = 12
+// What `act` may chain. Opening is allowed so one call can go to a page and work on it.
+const STEP_ACTIONS = new Set(['open', 'click', 'type', 'press_key', 'scroll', 'hover', 'back', 'wait', 'wait_for'])
 
 let settings = { ...DEFAULTS }
 
@@ -208,6 +211,21 @@ async function requireTab() {
   return tab
 }
 
+/** The working tab, with the page helpers and markings in place. */
+async function readyTab() {
+  const tab = await requireTab()
+
+  await inPage(tab.id, paintIndicator, [indicator()])
+
+  return tab
+}
+
+function targetOf(ref, label) {
+  const number = ref === undefined || ref === null || ref === '' ? NaN : Number(ref)
+
+  return { label: typeof label === 'string' ? label : '', ref: Number.isInteger(number) ? number : null }
+}
+
 function waitForLoad(tabId, timeoutMs = LOAD_TIMEOUT_MS) {
   return new Promise(resolve => {
     let done = false
@@ -351,30 +369,35 @@ const COMMANDS = {
     return describe(tab.id)
   },
 
-  async read({ max_chars: maxChars, filter }) {
-    const tab = await requireTab()
+  async read({ max_chars: maxChars, filter, all, offset }) {
+    const tab = await readyTab()
 
-    return inPage(tab.id, snapshotPage, [Number(maxChars) > 0 ? Number(maxChars) : 6000, String(filter || '')])
+    return inPage(tab.id, snapshotPage, [
+      Number(maxChars) > 0 ? Number(maxChars) : 4000,
+      String(filter || ''),
+      Boolean(all),
+      Number(offset) > 0 ? Number(offset) : 0
+    ])
   },
 
-  async click({ ref }) {
-    const tab = await requireTab()
+  async click({ ref, label }) {
+    const tab = await readyTab()
 
-    await inPage(tab.id, clickElement, [Number(ref)])
+    await inPage(tab.id, clickElement, [targetOf(ref, label)])
 
     return settle(tab.id)
   },
 
-  async type({ ref, text, submit }) {
-    const tab = await requireTab()
+  async type({ ref, label, text, submit }) {
+    const tab = await readyTab()
 
-    await inPage(tab.id, typeIntoElement, [Number(ref), String(text ?? ''), Boolean(submit)])
+    await inPage(tab.id, typeIntoElement, [targetOf(ref, label), String(text ?? ''), Boolean(submit)])
 
     return submit ? settle(tab.id) : describe(tab.id)
   },
 
   async press_key({ key }) {
-    const tab = await requireTab()
+    const tab = await readyTab()
 
     await inPage(tab.id, pressKey, [String(key || '')])
 
@@ -382,15 +405,15 @@ const COMMANDS = {
   },
 
   async scroll({ direction, pages }) {
-    const tab = await requireTab()
+    const tab = await readyTab()
 
     return inPage(tab.id, scrollPage, [String(direction || 'down'), Number(pages) > 0 ? Number(pages) : 1])
   },
 
-  async hover({ ref }) {
-    const tab = await requireTab()
+  async hover({ ref, label }) {
+    const tab = await readyTab()
 
-    await inPage(tab.id, hoverElement, [Number(ref)])
+    await inPage(tab.id, hoverElement, [targetOf(ref, label)])
     await new Promise(resolve => setTimeout(resolve, 350))
 
     return describe(tab.id)
@@ -418,6 +441,73 @@ const COMMANDS = {
     })
 
     return settle(tab.id)
+  },
+
+  async wait({ seconds }) {
+    await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(Number(seconds) || 1, 0.1), 10) * 1000))
+
+    return { waited: true }
+  },
+
+  /** Wait until some text shows on the page: results arriving, a dialog opening, a page loading. */
+  async wait_for({ text, seconds }) {
+    const tab = await readyTab()
+    const wanted = String(text || '').trim().toLowerCase()
+
+    if (!wanted) {
+      throw new Error('`text` is required.')
+    }
+
+    const deadline = Date.now() + Math.min(Math.max(Number(seconds) || 8, 1), 20) * 1000
+
+    while (Date.now() < deadline) {
+      const found = await inPage(tab.id, needle => (document.body?.innerText || '').toLowerCase().includes(needle), [wanted]).catch(() => false)
+
+      if (found) {
+        return { found: true }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+
+    throw new Error(`"${text}" did not appear on the page in time.`)
+  },
+
+  /** Several steps in one call, so the agent does not have to stop and think between each. */
+  async act({ steps, read_after: readAfter, max_chars: maxChars }) {
+    if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) {
+      throw new Error(`\`steps\` must be a list of 1 to ${MAX_STEPS} actions.`)
+    }
+
+    const done = []
+    let failure = null
+
+    for (const [index, step] of steps.entries()) {
+      const action = String(step?.action || '')
+
+      if (!STEP_ACTIONS.has(action)) {
+        failure = { step: index + 1, action, error: `Unknown action. Use one of: ${[...STEP_ACTIONS].join(', ')}.` }
+        break
+      }
+
+      try {
+        await COMMANDS[action](step)
+        done.push(action)
+      } catch (error) {
+        failure = { step: index + 1, action, error: String(error?.message || error) }
+        break
+      }
+    }
+
+    const result = { completed: done.length, of: steps.length, ...(failure ? { failed: failure } : {}) }
+
+    if (readAfter === false) {
+      const tab = await workingTab()
+
+      return { ...result, ...(tab ? await describe(tab.id) : {}) }
+    }
+
+    return { ...result, page: await COMMANDS.read({ max_chars: maxChars }) }
   },
 
   async close() {
@@ -460,8 +550,102 @@ async function run(command, args) {
 /** A border and a badge that mark the tab as under the agent's control. Lives on <html>, outside
  *  <body>, so it never shows up in the page text the agent reads. */
 function paintIndicator(look) {
+  // Already set up on this page with the same look: leave it, so the pointer keeps its place.
+  const signature = JSON.stringify(look)
+
+  if (window.__hermesLook === signature && document.getElementById('__hermes_style')) {
+    return
+  }
+
+  window.__hermesLook = signature
+
   for (const id of ['__hermes_style', '__hermes_frame', '__hermes_badge', '__hermes_cursor']) {
     document.getElementById(id)?.remove()
+  }
+
+  const SELECTOR = [
+    'a[href]', 'button', 'input:not([type=hidden])', 'select', 'textarea', 'summary',
+    '[role=button]', '[role=link]', '[role=tab]', '[role=menuitem]', '[role=option]', '[role=checkbox]',
+    '[role=radio]', '[role=combobox]', '[role=searchbox]', '[role=textbox]', '[role=switch]',
+    '[contenteditable=""]', '[contenteditable=true]', '[onclick]', '[tabindex]:not([tabindex="-1"])'
+  ].join(',')
+
+  const clean = text => String(text || '').replace(/\s+/g, ' ').trim()
+
+  window.__hermesShown = element => {
+    const box = element.getBoundingClientRect()
+
+    if (box.width < 2 || box.height < 2) {
+      return false
+    }
+
+    const style = getComputedStyle(element)
+
+    return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) !== 0
+  }
+
+  window.__hermesLabel = element =>
+    clean(
+      element.getAttribute('aria-label') ||
+        element.innerText ||
+        element.value ||
+        element.getAttribute('placeholder') ||
+        element.getAttribute('title') ||
+        element.querySelector('img[alt]')?.getAttribute('alt') ||
+        element.getAttribute('name')
+    ).slice(0, 90)
+
+  /** Every interactive element a person could see and use, in page order. */
+  window.__hermesCollect = () => {
+    const elements = []
+
+    for (const element of document.querySelectorAll(SELECTOR)) {
+      if (elements.length >= 400) {
+        break
+      }
+
+      if (window.__hermesShown(element) && !element.disabled) {
+        elements.push(element)
+      }
+    }
+
+    return elements
+  }
+
+  /** The element a tool call means: by `ref` from the last read, or by its visible `label`. */
+  window.__hermesResolve = (target, wantsText = false) => {
+    if (Number.isInteger(target?.ref)) {
+      const element = window.__hermesElements?.[target.ref]
+
+      return element && element.isConnected
+        ? { element }
+        : { error: 'That ref is no longer on the page. Read the page again, or name the element with `label`.' }
+    }
+
+    const wanted = clean(target?.label).toLowerCase()
+
+    if (!wanted) {
+      return { error: 'Say which element: give its `ref` from a read, or its visible text as `label`.' }
+    }
+
+    let pool = window.__hermesCollect()
+      .map(element => ({ element, name: window.__hermesLabel(element).toLowerCase() }))
+      .filter(entry => entry.name)
+
+    if (wantsText) {
+      const fields = pool.filter(({ element }) => /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName) || element.isContentEditable)
+
+      pool = fields.length ? fields : pool
+    }
+
+    const match =
+      pool.find(entry => entry.name === wanted) ||
+      pool.find(entry => entry.name.startsWith(wanted)) ||
+      pool.find(entry => entry.name.includes(wanted))
+
+    return match
+      ? { element: match.element }
+      : { error: `Nothing on the page is labelled "${target.label}". Read the page to see what is there.` }
   }
 
   // The agent's own pointer: an arrow drawn on the page that glides to whatever the agent is
@@ -534,61 +718,37 @@ function paintIndicator(look) {
   document.documentElement.append(frame, badge)
 }
 
-function snapshotPage(maxChars, filter) {
-  const SELECTOR = [
-    'a[href]', 'button', 'input:not([type=hidden])', 'select', 'textarea', 'summary',
-    '[role=button]', '[role=link]', '[role=tab]', '[role=menuitem]', '[role=option]', '[role=checkbox]',
-    '[role=radio]', '[role=combobox]', '[role=searchbox]', '[role=textbox]', '[role=switch]',
-    '[contenteditable=""]', '[contenteditable=true]', '[onclick]', '[tabindex]:not([tabindex="-1"])'
-  ].join(',')
-
+function snapshotPage(maxChars, filter, wholePage, offset) {
   const clean = text => String(text || '').replace(/\s+/g, ' ').trim()
-
-  const shown = element => {
-    const box = element.getBoundingClientRect()
-
-    if (box.width < 2 || box.height < 2) {
-      return false
-    }
-
-    const style = getComputedStyle(element)
-
-    return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) !== 0
-  }
-
-  const label = element =>
-    clean(
-      element.getAttribute('aria-label') ||
-        element.innerText ||
-        element.value ||
-        element.getAttribute('placeholder') ||
-        element.getAttribute('title') ||
-        element.querySelector('img[alt]')?.getAttribute('alt') ||
-        element.getAttribute('name')
-    ).slice(0, 90)
-
-  const elements = []
-
-  for (const element of document.querySelectorAll(SELECTOR)) {
-    if (elements.length >= 400) {
-      break
-    }
-
-    if (shown(element) && !element.disabled) {
-      elements.push(element)
-    }
-  }
+  const shown = window.__hermesShown
+  const label = window.__hermesLabel
+  const elements = window.__hermesCollect()
 
   // Refs index into this list until the next read.
   window.__hermesElements = elements
 
+  const onScreen = element => {
+    const box = element.getBoundingClientRect()
+
+    return box.bottom > 0 && box.top < window.innerHeight && box.right > 0 && box.left < window.innerWidth
+  }
+
   const needle = filter.toLowerCase()
   const listed = []
+  let elsewhere = 0
 
   elements.forEach((element, ref) => {
     const name = label(element)
 
     if (!name || (needle && !name.toLowerCase().includes(needle))) {
+      return
+    }
+
+    // Without a filter, list what is on screen: it is what the next step usually needs, and a
+    // long page would otherwise cost the agent hundreds of entries on every read.
+    if (!needle && !wholePage && !onScreen(element)) {
+      elsewhere += 1
+
       return
     }
 
@@ -603,25 +763,26 @@ function snapshotPage(maxChars, filter) {
       }
     }
 
-    if (listed.length < 250) {
+    if (listed.length < 150) {
       listed.push(entry)
     }
   })
 
   const text = clean(document.body?.innerText || '')
+  const remaining = Math.max(0, text.length - offset - maxChars)
 
   return {
     title: document.title,
     url: location.href,
-    text: text.slice(0, maxChars),
-    text_truncated: text.length > maxChars,
+    text: text.slice(offset, offset + maxChars),
+    ...(remaining ? { text_remaining: remaining, next_offset: offset + maxChars } : {}),
     scroll: {
       position: Math.round(window.scrollY),
       page_height: document.documentElement.scrollHeight,
       viewport_height: window.innerHeight
     },
     elements: listed,
-    elements_total: elements.length,
+    ...(elsewhere ? { elements_off_screen: elsewhere } : {}),
     ...visualOnly()
   }
 
@@ -642,11 +803,11 @@ function snapshotPage(maxChars, filter) {
   }
 }
 
-async function clickElement(ref) {
-  const element = window.__hermesElements?.[ref]
+async function clickElement(target) {
+  const { element, error } = window.__hermesResolve(target)
 
-  if (!element || !element.isConnected) {
-    return { error: 'That ref is no longer on the page. Read the page again and use a fresh ref.' }
+  if (error) {
+    return { error }
   }
 
   element.scrollIntoView({ block: 'center', inline: 'center' })
@@ -678,11 +839,11 @@ async function clickElement(ref) {
   return { clicked: true }
 }
 
-async function typeIntoElement(ref, text, submit) {
-  const element = window.__hermesElements?.[ref]
+async function typeIntoElement(target, text, submit) {
+  const { element, error } = window.__hermesResolve(target, true)
 
-  if (!element || !element.isConnected) {
-    return { error: 'That ref is no longer on the page. Read the page again and use a fresh ref.' }
+  if (error) {
+    return { error }
   }
 
   if (element.type === 'password') {
@@ -835,11 +996,11 @@ async function scrollPage(direction, pages) {
   return result
 }
 
-async function hoverElement(ref) {
-  const element = window.__hermesElements?.[ref]
+async function hoverElement(target) {
+  const { element, error } = window.__hermesResolve(target)
 
-  if (!element || !element.isConnected) {
-    return { error: 'That ref is no longer on the page. Read the page again and use a fresh ref.' }
+  if (error) {
+    return { error }
   }
 
   element.scrollIntoView({ block: 'center', inline: 'center' })

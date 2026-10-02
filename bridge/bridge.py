@@ -52,6 +52,14 @@ def _schema(properties: Dict[str, Any], required: Optional[List[str]] = None) ->
 
 
 _REF = {"type": "integer", "description": "Element ref from the latest `read` of the page."}
+_LABEL = {
+    "type": "string",
+    "description": (
+        "The element's visible text or label, instead of a ref. Use it when you have not read the "
+        "page yet, or after a step that changed the page."
+    ),
+}
+_STEP_ACTIONS = ["open", "click", "type", "press_key", "scroll", "hover", "back", "wait", "wait_for"]
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -65,34 +73,77 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": _schema({"url": {"type": "string", "description": "Absolute http(s) URL."}}, ["url"]),
     },
     {
-        "name": "read",
+        "name": "act",
         "description": (
-            "Read the working tab: title, URL, the visible page text, and a numbered list of "
-            "interactive elements (links, buttons, inputs) whose `ref` you pass to click, type and "
-            "hover. Refs are only valid until the page changes; read again after navigating or "
-            "clicking."
+            "Do several things in the working tab in ONE call, then get the resulting page back. "
+            "Prefer this over separate calls whenever you already know the next few steps, for "
+            "example open a site, type a search and submit it, or fill in a form and press a "
+            "button: every call you save is time the user does not wait. Steps run in order and "
+            "stop at the first one that fails; the result says how many completed. Inside a batch "
+            "name elements by `label` (their visible text), since refs change when the page does. "
+            "Each step is an object with `action` and that action's own fields: open {url}, "
+            "click {label|ref}, type {label|ref, text, submit}, press_key {key}, "
+            "scroll {direction, pages}, hover {label|ref}, back {}, wait {seconds}, "
+            "wait_for {text, seconds}."
         ),
         "inputSchema": _schema({
-            "max_chars": {"type": "integer", "description": "Cap on page text returned. Default 6000."},
-            "filter": {"type": "string", "description": "Only list elements whose label contains this text."},
+            "steps": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 12,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": _STEP_ACTIONS},
+                        "url": {"type": "string"},
+                        "ref": {"type": "integer"},
+                        "label": {"type": "string"},
+                        "text": {"type": "string"},
+                        "submit": {"type": "boolean"},
+                        "key": {"type": "string"},
+                        "direction": {"type": "string", "enum": ["down", "up", "top", "bottom"]},
+                        "pages": {"type": "number"},
+                        "seconds": {"type": "number"},
+                    },
+                    "required": ["action"],
+                },
+            },
+            "read_after": {"type": "boolean", "description": "Return the page afterwards. Default true."},
+            "max_chars": {"type": "integer", "description": "Cap on page text returned. Default 4000."},
+        }, ["steps"]),
+    },
+    {
+        "name": "read",
+        "description": (
+            "Read the working tab: title, URL, page text, and a numbered list of the interactive "
+            "elements currently on screen (links, buttons, inputs) whose `ref` you pass to click, "
+            "type and hover. Refs are only valid until the page changes. The text comes in pages: "
+            "when `text_remaining` is present, read again with `offset` set to `next_offset`."
+        ),
+        "inputSchema": _schema({
+            "max_chars": {"type": "integer", "description": "Cap on page text returned. Default 4000."},
+            "offset": {"type": "integer", "description": "Start the text this many characters in. Default 0."},
+            "filter": {"type": "string", "description": "Only list elements whose label contains this text, anywhere on the page."},
+            "all": {"type": "boolean", "description": "List elements from the whole page, not just what is on screen."},
         }),
     },
     {
         "name": "click",
-        "description": "Click an element in the working tab by its ref. Returns the page title and URL afterwards.",
-        "inputSchema": _schema({"ref": _REF}, ["ref"]),
+        "description": "Click an element in the working tab, by `ref` or by `label`. Returns the page title and URL afterwards.",
+        "inputSchema": _schema({"ref": _REF, "label": _LABEL}),
     },
     {
         "name": "type",
         "description": (
-            "Type text into an input, textarea, dropdown or editable element by its ref, replacing "
-            "its current value. Password fields are refused."
+            "Type text into an input, textarea, dropdown or editable element, by `ref` or by `label`, "
+            "replacing its current value. Password fields are refused."
         ),
         "inputSchema": _schema({
             "ref": _REF,
+            "label": _LABEL,
             "text": {"type": "string"},
             "submit": {"type": "boolean", "description": "Press Enter afterwards (submits most search boxes and forms)."},
-        }, ["ref", "text"]),
+        }, ["text"]),
     },
     {
         "name": "press_key",
@@ -118,11 +169,11 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "hover",
         "description": (
-            "Move the pointer over an element in the working tab by its ref, to reveal a menu or a "
+            "Move the pointer over an element in the working tab, by `ref` or by `label`, to reveal a menu or a "
             "tooltip that is part of the page. Read again afterwards. Tooltips drawn inside a canvas "
             "chart are pixels and will not appear in the text."
         ),
-        "inputSchema": _schema({"ref": _REF}, ["ref"]),
+        "inputSchema": _schema({"ref": _REF, "label": _LABEL}),
     },
     {
         "name": "show",
