@@ -2,6 +2,10 @@
 
 Notable changes to this project are recorded here. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- `--allow-host` and `BROWSER_PILOT_ALLOWED_HOSTS` let the bridge answer agent requests addressed to other host names, for an agent in a container or behind a tunnel. Any number of names can be listed. The bridge refuses to start with an allowed name and no password.
+
 ## 0.1.0
 
 First release.

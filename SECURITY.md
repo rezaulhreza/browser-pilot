@@ -10,6 +10,8 @@ Browser Pilot lets a program on your computer act in your real, signed-in browse
 
 **Access from other computers.** The bridge listens on `127.0.0.1` only. It is not reachable from your network. The extension will only ever connect to `127.0.0.1`, whatever is saved in its settings.
 
+**A tunnel or a container you set up yourself.** With `--allow-host` the bridge also answers agent requests addressed to the names you list, so an agent in a container or behind your own tunnel can reach it. The bridge refuses to start with an allowed name and no `BROWSER_PILOT_TOKEN`, because once a tunnel points at the bridge the password is the only thing between the internet and your browser. Use a long random password, and prefer a private network to a public address.
+
 **The agent reaching your other tabs.** The extension has no command that lists, reads or changes a tab other than the agent's own. A link that tries to open a new tab is pulled back into the agent's tab.
 
 **Passwords.** The extension refuses to type into password fields and does not report their contents.

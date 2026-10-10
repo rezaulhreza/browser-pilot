@@ -91,6 +91,19 @@ The bridge has a few options of its own.
 | `--idle-close-seconds` | Close the agent's tab after this long without activity. Use 0 to leave it open. | 600 |
 | `--extension-id` | Accept only this extension. Copy the ID from `chrome://extensions`. | Any |
 | `BROWSER_PILOT_TOKEN` | Set this environment variable to make agents send a password with every request. | Not set |
+| `--allow-host` | Also accept agent requests addressed to this host name. Repeat it for each name, or list the names in `BROWSER_PILOT_ALLOWED_HOSTS` with commas between them. Needs `BROWSER_PILOT_TOKEN`. | `127.0.0.1` and `localhost` only |
+
+### Reaching the bridge from somewhere else
+
+The bridge listens on this computer only, and that does not change. An agent that runs in a container, or on another machine behind a tunnel you set up, reaches the bridge by a different name, and the bridge refuses a name it was not told about. Name each one and set a password:
+
+```sh
+BROWSER_PILOT_TOKEN=choose-a-long-password python3 bridge/bridge.py \
+  --allow-host host.docker.internal \
+  --allow-host pilot.example.com
+```
+
+The bridge will not start with an allowed name and no password. Only the agent's address (`/mcp`) answers to an allowed name. The extension still connects on `127.0.0.1`.
 
 ## What the agent can do
 

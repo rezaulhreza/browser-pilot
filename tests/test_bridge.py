@@ -29,14 +29,14 @@ EXTENSION_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
 class FakeExtension:
     """A WebSocket client that plays the extension: it answers every command it is sent."""
 
-    def __init__(self, port: int, origin: str = EXTENSION_ORIGIN, answer=None) -> None:
+    def __init__(self, port: int, origin: str = EXTENSION_ORIGIN, answer=None, host: str = "") -> None:
         self.answer = answer or (lambda command, args: {"ok": True, "result": {"echo": command, "args": args}})
         self.commands = []
         self.dropped = threading.Event()  # set once the server has hung up on this client
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
         self.sock.sendall((
-            f"GET /ext HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            f"GET /ext HTTP/1.1\r\nHost: {host or f'127.0.0.1:{port}'}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nOrigin: {origin}\r\n\r\n").encode())
         head = b""
         while b"\r\n\r\n" not in head:
@@ -103,9 +103,11 @@ class BridgeTestCase(unittest.TestCase):
     token = ""
     extension_ids = None
     idle_close_seconds = 600
+    allowed_hosts = None
 
     def setUp(self) -> None:
-        self.bridge = bridge_module.Bridge(self.idle_close_seconds, self.extension_ids, self.token)
+        self.bridge = bridge_module.Bridge(self.idle_close_seconds, self.extension_ids, self.token,
+                                           self.allowed_hosts)
         self.server = bridge_module.build_server(0, self.bridge)
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -288,6 +290,47 @@ class TokenTest(BridgeTestCase):
         self.assertEqual(self.post(request)[0], 401)
         self.assertEqual(self.post(request, headers={"Authorization": "Bearer wrong"})[0], 401)
         self.assertEqual(self.post(request, headers={"Authorization": "Bearer s3cret"})[0], 200)
+
+
+class AllowedHostTest(BridgeTestCase):
+    """A tunnel or a container reaches the bridge by another name. Only a listed name gets in,
+    only to the agent's route, and only with the password."""
+
+    token = "s3cret"
+    allowed_hosts = ["host.docker.internal", " Pilot.Example.com "]
+    request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+
+    def headers(self, host, token="s3cret"):
+        return {"Host": host, "Authorization": f"Bearer {token}"}
+
+    def test_each_listed_name_is_accepted_with_or_without_a_port(self):
+        for host in ("host.docker.internal:8790", "pilot.example.com", "PILOT.example.com:443", "127.0.0.1"):
+            self.assertEqual(self.post(self.request, headers=self.headers(host))[0], 200, host)
+
+    def test_a_name_that_is_not_listed_is_still_refused(self):
+        for host in ("attacker.example", "evil.host.docker.internal", "pilot.example.com.attacker.example"):
+            self.assertEqual(self.post(self.request, headers=self.headers(host))[0], 403, host)
+
+    def test_a_listed_name_still_needs_the_password(self):
+        self.assertEqual(self.post(self.request, headers={"Host": "pilot.example.com"})[0], 401)
+        self.assertEqual(self.post(self.request, headers=self.headers("pilot.example.com", "wrong"))[0], 401)
+
+    def test_a_web_page_is_refused_whatever_name_it_uses(self):
+        headers = {**self.headers("pilot.example.com"), "Origin": "https://attacker.example"}
+        self.assertEqual(self.post(self.request, headers=headers)[0], 403)
+
+    def test_a_listed_name_reaches_the_agents_route_and_nothing_else(self):
+        status, _reply = self.post({}, headers=self.headers("pilot.example.com"), path="/admin/reload-extension")
+        self.assertEqual(status, 403)
+        extension = FakeExtension(self.port, host="pilot.example.com")
+        self.addCleanup(extension.close)
+        self.assertEqual(extension.status, 403)
+
+    def test_another_name_cannot_be_allowed_without_a_password(self):
+        with self.assertRaises(ValueError):
+            bridge_module.Bridge(allowed_hosts=["pilot.example.com"])
+        with self.assertRaises(SystemExit):
+            bridge_module.main(["--allow-host", "pilot.example.com", "--port", "0"])
 
 
 if __name__ == "__main__":
