@@ -86,8 +86,21 @@ function blockedBy(url) {
   return null
 }
 
-function indicator() {
-  return { color: GROUP_COLORS[settings.groupColor], label: `${settings.groupTitle} is working in this tab`, show: settings.showIndicator }
+// The order colours are handed out in: neighbours on the list are easy to tell apart.
+const COLOUR_ORDER = ['orange', 'blue', 'green', 'red', 'purple', 'pink', 'cyan', 'yellow', 'grey']
+
+/**
+ * The colour of the agent on this port. The first bridge on the list has the colour the user
+ * chose, and each one after it takes the next colour, so two agents' tabs are told apart at a glance.
+ */
+function colourOf(port) {
+  const place = Math.max(settings.ports.indexOf(port), 0)
+
+  return COLOUR_ORDER[(COLOUR_ORDER.indexOf(settings.groupColor) + place) % COLOUR_ORDER.length]
+}
+
+function indicator(port) {
+  return { color: GROUP_COLORS[colourOf(port)], label: `${settings.groupTitle} is working in this tab`, show: settings.showIndicator }
 }
 
 // One connection for each bridge, by port.
@@ -211,8 +224,8 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     const tab = await workingTab(port)
 
     if (tab) {
-      await chrome.tabGroups.update(tab.groupId, { color: settings.groupColor, title: settings.groupTitle }).catch(() => undefined)
-      await inPage(tab.id, paintIndicator, [indicator()]).catch(() => undefined)
+      await chrome.tabGroups.update(tab.groupId, { color: colourOf(port), title: settings.groupTitle }).catch(() => undefined)
+      await inPage(tab.id, paintIndicator, [indicator(port)]).catch(() => undefined)
     }
   }
 })
@@ -252,13 +265,13 @@ async function workingTab(port) {
   }
 }
 
-/** The working tab with this id, whichever agent it belongs to, or null. */
-async function workingTabById(tabId) {
+/** The port of the agent whose working tab has this id, or null when it is nobody's. */
+async function portOfTab(tabId) {
   for (const port of settings.ports) {
     const tab = await workingTab(port)
 
     if (tab?.id === tabId) {
-      return tab
+      return port
     }
   }
 
@@ -279,7 +292,7 @@ async function requireTab(port) {
 async function readyTab(port) {
   const tab = await requireTab(port)
 
-  await inPage(tab.id, paintIndicator, [indicator()])
+  await inPage(tab.id, paintIndicator, [indicator(port)])
 
   return tab
 }
@@ -342,7 +355,7 @@ async function inPage(tabId, func, args = []) {
 }
 
 /** After an action that may navigate: give it a moment, then wait out any page load. */
-async function settle(tabId) {
+async function settle(tabId, port) {
   await new Promise(resolve => setTimeout(resolve, 450))
 
   const tab = await chrome.tabs.get(tabId)
@@ -351,7 +364,7 @@ async function settle(tabId) {
     await waitForLoad(tabId, 12_000)
   }
 
-  await inPage(tabId, paintIndicator, [indicator()]).catch(() => undefined)
+  await inPage(tabId, paintIndicator, [indicator(port)]).catch(() => undefined)
 
   return describe(tabId)
 }
@@ -367,16 +380,16 @@ chrome.tabs.onCreated.addListener(async created => {
     return
   }
 
-  const tab = typeof created.openerTabId === 'number' ? await workingTabById(created.openerTabId) : null
+  const opener = created.openerTabId
 
-  if (!tab) {
+  if (typeof opener !== 'number' || (await portOfTab(opener)) === null) {
     return
   }
 
   await chrome.tabs.remove(created.id).catch(() => undefined)
 
   if (!blockedBy(url)) {
-    await chrome.tabs.update(tab.id, { url }).catch(() => undefined)
+    await chrome.tabs.update(opener, { url }).catch(() => undefined)
   }
 })
 
@@ -385,7 +398,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
     return
   }
 
-  const tab = await workingTabById(tabId)
+  const port = await portOfTab(tabId)
+  const tab = port === null ? null : await workingTab(port)
 
   if (!tab) {
     return
@@ -399,7 +413,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   }
 
   if (change.status === 'complete') {
-    inPage(tabId, paintIndicator, [indicator()]).catch(() => undefined)
+    inPage(tabId, paintIndicator, [indicator(port)]).catch(() => undefined)
   }
 })
 
@@ -429,12 +443,12 @@ const COMMANDS = {
 
       const groupId = await chrome.tabs.group({ tabIds: [tab.id] })
 
-      await chrome.tabGroups.update(groupId, { collapsed: false, color: settings.groupColor, title: settings.groupTitle })
+      await chrome.tabGroups.update(groupId, { collapsed: false, color: colourOf(port), title: settings.groupTitle })
       await chrome.storage.session.set({ [tabKey(port)]: tab.id })
     }
 
     await waitForLoad(tab.id)
-    await inPage(tab.id, paintIndicator, [indicator()]).catch(() => undefined)
+    await inPage(tab.id, paintIndicator, [indicator(port)]).catch(() => undefined)
 
     return describe(tab.id)
   },
@@ -456,7 +470,7 @@ const COMMANDS = {
     lastAgentActionAt = Date.now()
     await inPage(tab.id, clickElement, [targetOf(ref, label)])
 
-    return settle(tab.id)
+    return settle(tab.id, port)
   },
 
   async type({ ref, label, text, submit }, port) {
@@ -465,7 +479,7 @@ const COMMANDS = {
     lastAgentActionAt = Date.now()
     await inPage(tab.id, typeIntoElement, [targetOf(ref, label), String(text ?? ''), Boolean(submit)])
 
-    return submit ? settle(tab.id) : describe(tab.id)
+    return submit ? settle(tab.id, port) : describe(tab.id)
   },
 
   async press_key({ key }, port) {
@@ -474,7 +488,7 @@ const COMMANDS = {
     lastAgentActionAt = Date.now()
     await inPage(tab.id, pressKey, [String(key || '')])
 
-    return settle(tab.id)
+    return settle(tab.id, port)
   },
 
   async scroll({ direction, pages }, port) {
@@ -513,7 +527,7 @@ const COMMANDS = {
       return { went_back: true }
     })
 
-    return settle(tab.id)
+    return settle(tab.id, port)
   },
 
   async wait({ seconds }, port) {
