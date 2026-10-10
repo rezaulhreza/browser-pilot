@@ -291,15 +291,28 @@ class Extension:
         return entry["response"] or {"ok": False, "error": "Empty answer from the extension."}
 
 
+NEEDS_TOKEN = "Set BROWSER_PILOT_TOKEN before you allow another host name. Without a password, anyone who can reach that name can drive the browser."
+
+
 class Bridge:
     """Settings and state shared by every request."""
 
     def __init__(self, idle_close_seconds: int = DEFAULT_IDLE_CLOSE_SECONDS,
-                 extension_ids: Optional[List[str]] = None, token: str = "") -> None:
+                 extension_ids: Optional[List[str]] = None, token: str = "",
+                 allowed_hosts: Optional[List[str]] = None) -> None:
         self.extension = Extension()
         self.idle_close_seconds = idle_close_seconds
         self.extension_ids = {item.strip() for item in (extension_ids or []) if item.strip()}
         self.token = token
+        self.allowed_hosts = {item.strip().lower() for item in (allowed_hosts or []) if item.strip()}
+        if self.allowed_hosts and not token:
+            # An extra name is how a tunnel or a container reaches the bridge, so the request
+            # no longer proves it came from this computer. The password is then the only guard.
+            raise ValueError(NEEDS_TOKEN)
+
+    def host_allowed(self, host: str) -> bool:
+        """Whether an agent may address the bridge by this extra name."""
+        return host.lower() in self.allowed_hosts
 
     def extension_allowed(self, origin: str) -> bool:
         prefix = "chrome-extension://"
@@ -348,10 +361,12 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── guards ───────────────────────────────────────────────────────────────────────────────
 
+    def _host(self) -> str:
+        return (self.headers.get("Host") or "").rsplit(":", 1)[0]
+
     def _local_host(self) -> bool:
         """Reject requests addressed to any other name (DNS rebinding)."""
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        return host in {"127.0.0.1", "localhost"}
+        return self._host() in {"127.0.0.1", "localhost"}
 
     def _from_web_page(self) -> bool:
         """A browser always sends Origin on a cross-origin POST. An agent sends none, so any
@@ -396,7 +411,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path not in ("/mcp", "/admin/reload-extension"):
             return self._empty(404)
-        if not self._local_host() or self._from_web_page():
+        # Only an agent may come in by an allowed name. Maintenance stays on this computer.
+        named = self.path == "/mcp" and self.bridge.host_allowed(self._host())
+        if not (self._local_host() or named) or self._from_web_page():
             return self._empty(403)
         if not self._authorised():
             return self._empty(401)
@@ -538,17 +555,25 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Close the working tab after this long without a command. 0 never closes it.")
     parser.add_argument("--extension-id", action="append", default=[],
                         help="Only accept this extension ID (repeatable). Default accepts any extension.")
+    parser.add_argument("--allow-host", action="append", default=[],
+                        help="Also accept agent requests addressed to this host name (repeatable), for a "
+                             "tunnel or a container. Needs BROWSER_PILOT_TOKEN. Default: 127.0.0.1 and localhost only.")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
     extension_ids = args.extension_id or [item for item in env.get("BROWSER_PILOT_EXTENSION_IDS", "").split(",") if item]
-    bridge = Bridge(args.idle_close_seconds, extension_ids, env.get("BROWSER_PILOT_TOKEN", ""))
+    allowed_hosts = args.allow_host + env.get("BROWSER_PILOT_ALLOWED_HOSTS", "").split(",")
+    try:
+        bridge = Bridge(args.idle_close_seconds, extension_ids, env.get("BROWSER_PILOT_TOKEN", ""), allowed_hosts)
+    except ValueError as error:
+        parser.error(str(error))
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     threading.Thread(target=bridge.sweep_forever, daemon=True).start()
     server = build_server(args.port, bridge)
-    log.info("listening on http://%s:%s (agent: /mcp, extension: /ext)%s", HOST, server.server_address[1],
-             ", token required" if bridge.token else "")
+    log.info("listening on http://%s:%s (agent: /mcp, extension: /ext)%s%s", HOST, server.server_address[1],
+             ", token required" if bridge.token else "",
+             ", also answers to " + ", ".join(sorted(bridge.allowed_hosts)) if bridge.allowed_hosts else "")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
