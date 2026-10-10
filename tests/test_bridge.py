@@ -292,6 +292,29 @@ class TokenTest(BridgeTestCase):
         self.assertEqual(self.post(request, headers={"Authorization": "Bearer s3cret"})[0], 200)
 
 
+class ExtensionPortsTest(BridgeTestCase):
+    """The maintenance route that tells the extension which bridges to connect to."""
+
+    def test_a_list_of_ports_is_passed_to_the_extension(self):
+        extension = self.connect()
+        status, reply = self.post({"ports": [8790, 8791]}, path="/admin/extension-ports")
+        self.assertEqual((status, reply["ok"]), (200, True))
+        self.assertEqual(reply["result"], {"echo": "_ports", "args": {"ports": [8790, 8791]}})
+        self.assertEqual(extension.commands, ["_ports"])
+
+    def test_anything_that_is_not_a_short_list_of_ports_is_refused(self):
+        extension = self.connect()
+        for ports in ([], [0], [70000], ["8790"], [8790, 8790], [True], list(range(1, 10)), None, 8790):
+            status, _reply = self.post({"ports": ports}, path="/admin/extension-ports")
+            self.assertEqual(status, 400, ports)
+        self.assertEqual(extension.commands, [])
+
+    def test_a_web_page_and_another_host_name_cannot_use_it(self):
+        for headers in ({"Origin": "https://attacker.example"}, {"Host": "attacker.example"}):
+            status, _reply = self.post({"ports": [1]}, headers=headers, path="/admin/extension-ports")
+            self.assertEqual(status, 403)
+
+
 class AllowedHostTest(BridgeTestCase):
     """A tunnel or a container reaches the bridge by another name. Only a listed name gets in,
     only to the agent's route, and only with the password."""
