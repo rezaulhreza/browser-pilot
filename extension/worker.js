@@ -601,6 +601,16 @@ const COMMANDS = {
     return { reloading: true }
   },
 
+  /** Maintenance, not an agent tool: set the bridges to connect to, as the settings page does. */
+  async _ports({ ports }) {
+    const wanted = cleanPorts(ports)
+
+    await chrome.storage.local.remove('port')
+    await chrome.storage.local.set({ ports: wanted })
+
+    return { ports: wanted }
+  },
+
   async status(_args, port) {
     const tab = await workingTab(port)
 

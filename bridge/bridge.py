@@ -294,6 +294,11 @@ class Extension:
 NEEDS_TOKEN = "Set BROWSER_PILOT_TOKEN before you allow another host name. Without a password, anyone who can reach that name can drive the browser."
 
 
+def _valid_ports(ports: Any) -> bool:
+    return (isinstance(ports, list) and 1 <= len(ports) <= 8 and len(set(ports)) == len(ports)
+            and all(isinstance(port, int) and not isinstance(port, bool) and 0 < port < 65536 for port in ports))
+
+
 class Bridge:
     """Settings and state shared by every request."""
 
@@ -409,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
         self._empty(200 if self.path == "/mcp" else 404)
 
     def do_POST(self) -> None:
-        if self.path not in ("/mcp", "/admin/reload-extension"):
+        if self.path not in ("/mcp", "/admin/reload-extension", "/admin/extension-ports"):
             return self._empty(404)
         # Only an agent may come in by an allowed name. Maintenance stays on this computer.
         named = self.path == "/mcp" and self.bridge.host_allowed(self._host())
@@ -425,6 +430,14 @@ class Handler(BaseHTTPRequestHandler):
             message = json.loads(self.rfile.read(length) or b"null")
         except ValueError:
             return self._json(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+
+        if self.path == "/admin/extension-ports":
+            # Maintenance: sets the list of bridge ports the extension connects to, so a second
+            # bridge can be added without opening the settings page.
+            ports = message.get("ports") if isinstance(message, dict) else None
+            if not _valid_ports(ports):
+                return self._json(400, {"ok": False, "error": "`ports` must be a list of 1 to 8 port numbers."})
+            return self._json(200, self.bridge.extension.command("_ports", {"ports": ports}, timeout=10))
 
         if isinstance(message, list):
             replies = [reply for reply in (self._rpc(item) for item in message) if reply is not None]
