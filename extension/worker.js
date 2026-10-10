@@ -1,15 +1,19 @@
 /**
  * Browser Pilot, the browser half.
  *
- * Holds a WebSocket to the local bridge (127.0.0.1) and carries out the agent's commands in ONE
+ * Holds a WebSocket to each local bridge (127.0.0.1) and carries out the agent's commands in ONE
  * working tab, kept in its own tab group. Everything is addressed at that tab only: the agent
  * has no command that lists, reads or changes any other tab, so the user's own tabs stay private
  * and undisturbed. The working tab opens in the background and shows a border and a badge while
  * it is under the agent's control.
+ *
+ * Each bridge is one agent, and it gets a working tab of its own. An agent on one bridge cannot
+ * reach the tab of an agent on another.
  */
 
 const DEFAULTS = {
-  port: 8790,
+  // One bridge for each agent that works on its own. Most people run one.
+  ports: [8790],
   groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
@@ -24,6 +28,7 @@ const GROUP_COLORS = {
 const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
+const MAX_PORTS = 8
 const MAX_STEPS = 12
 const AGENT_POPUP_WINDOW_MS = 4000
 // What `act` may chain. Opening is allowed so one call can go to a page and work on it.
@@ -31,10 +36,22 @@ const STEP_ACTIONS = new Set(['open', 'click', 'type', 'press_key', 'scroll', 'h
 
 let settings = { ...DEFAULTS }
 
+/** The ports to dial: whole numbers a port can be, each once. */
+function cleanPorts(value) {
+  const ports = (Array.isArray(value) ? value : [value])
+    .map(Number)
+    .filter(port => Number.isInteger(port) && port > 0 && port < 65536)
+  const unique = [...new Set(ports)].slice(0, MAX_PORTS)
+
+  return unique.length ? unique : DEFAULTS.ports
+}
+
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(Object.keys(DEFAULTS))
+  // `port` is what a version with one bridge stored.
+  const { port, ...stored } = await chrome.storage.local.get([...Object.keys(DEFAULTS), 'port'])
 
   settings = { ...DEFAULTS, ...stored }
+  settings.ports = cleanPorts(stored.ports ?? port ?? DEFAULTS.ports)
 
   if (!(settings.groupColor in GROUP_COLORS)) {
     settings.groupColor = DEFAULTS.groupColor
@@ -43,10 +60,8 @@ async function loadSettings() {
   return settings
 }
 
-function bridgeUrl() {
+function bridgeUrl(port) {
   // Loopback only, whatever is stored: the bridge must never be a remote machine.
-  const port = Number.isInteger(Number(settings.port)) && settings.port > 0 && settings.port < 65536 ? Number(settings.port) : DEFAULTS.port
-
   return `ws://127.0.0.1:${port}/ext`
 }
 
@@ -75,33 +90,61 @@ function indicator() {
   return { color: GROUP_COLORS[settings.groupColor], label: `${settings.groupTitle} is working in this tab`, show: settings.showIndicator }
 }
 
-let socket = null
+// One connection for each bridge, by port.
+const sockets = new Map()
 // When the agent last clicked, typed or pressed a key: the only moments its page may open a tab.
 let lastAgentActionAt = 0
-let keepalive = null
 
 // ── connection ───────────────────────────────────────────────────────────────────────────────
 
-async function connect() {
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    return
-  }
+function isLive(ws) {
+  return Boolean(ws) && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
+}
 
-  await loadSettings()
+/** The toolbar button says whether every bridge is reached, and names the ones that are not. */
+function showConnection() {
+  const down = settings.ports.filter(port => sockets.get(port)?.readyState !== WebSocket.OPEN)
 
-  // A second caller may have connected while the settings were loading.
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    return
-  }
-
-  const ws = new WebSocket(bridgeUrl())
-  socket = ws
-
-  ws.addEventListener('open', () => {
+  if (!down.length) {
     chrome.action.setBadgeText({ text: '' })
     chrome.action.setTitle({ title: 'Browser Pilot is connected' })
+
+    return
+  }
+
+  chrome.action.setBadgeText({ text: '!' })
+  chrome.action.setBadgeBackgroundColor({ color: '#b45309' })
+  chrome.action.setTitle({ title: `Browser Pilot cannot reach the bridge on port ${down.join(', ')}` })
+}
+
+async function connect() {
+  await loadSettings()
+
+  // A port taken off the list is hung up on. Its close handler does not dial again.
+  for (const [port, ws] of sockets) {
+    if (!settings.ports.includes(port)) {
+      ws.close()
+    }
+  }
+
+  for (const port of settings.ports) {
+    dial(port)
+  }
+}
+
+function dial(port) {
+  if (isLive(sockets.get(port))) {
+    return
+  }
+
+  const ws = new WebSocket(bridgeUrl(port))
+  let keepalive = null
+
+  sockets.set(port, ws)
+
+  ws.addEventListener('open', () => {
+    showConnection()
     // Traffic on the socket is what keeps a Manifest V3 service worker from being suspended.
-    clearInterval(keepalive)
     keepalive = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'ping' }))
@@ -121,7 +164,7 @@ async function connect() {
     let reply
 
     try {
-      reply = { id: message.id, ok: true, result: await run(message.command, message.args || {}) }
+      reply = { id: message.id, ok: true, result: await run(port, message.command, message.args || {}) }
     } catch (error) {
       reply = { id: message.id, ok: false, error: String(error?.message || error) }
     }
@@ -132,12 +175,16 @@ async function connect() {
   })
 
   ws.addEventListener('close', () => {
-    if (socket === ws) {
-      socket = null
-      clearInterval(keepalive)
-      chrome.action.setBadgeText({ text: '!' })
-      chrome.action.setBadgeBackgroundColor({ color: '#b45309' })
-      chrome.action.setTitle({ title: 'Browser Pilot cannot reach the bridge' })
+    clearInterval(keepalive)
+
+    if (sockets.get(port) !== ws) {
+      return
+    }
+
+    sockets.delete(port)
+    showConnection()
+
+    if (settings.ports.includes(port)) {
       // Re-dial soon; the alarm below is the slower safety net for a suspended worker.
       setTimeout(connect, 2000)
     }
@@ -157,21 +204,16 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     return
   }
 
-  const portChanged = 'port' in changes
+  // Hangs up on a port that was taken off the list and dials one that was added.
+  await connect()
 
-  await loadSettings()
+  for (const port of settings.ports) {
+    const tab = await workingTab(port)
 
-  if (portChanged && socket) {
-    socket.close() // the close handler re-dials, now on the new port
-  } else {
-    void connect()
-  }
-
-  const tab = await workingTab()
-
-  if (tab) {
-    await chrome.tabGroups.update(tab.groupId, { color: settings.groupColor, title: settings.groupTitle }).catch(() => undefined)
-    await inPage(tab.id, paintIndicator, [indicator()]).catch(() => undefined)
+    if (tab) {
+      await chrome.tabGroups.update(tab.groupId, { color: settings.groupColor, title: settings.groupTitle }).catch(() => undefined)
+      await inPage(tab.id, paintIndicator, [indicator()]).catch(() => undefined)
+    }
   }
 })
 
@@ -179,8 +221,14 @@ void connect()
 
 // ── the working tab ──────────────────────────────────────────────────────────────────────────
 
-async function workingTab() {
-  const { [TAB_KEY]: tabId } = await chrome.storage.session.get(TAB_KEY)
+/** Where the working tab of the agent on this port is remembered. */
+function tabKey(port) {
+  return `${TAB_KEY}:${port}`
+}
+
+async function workingTab(port) {
+  const key = tabKey(port)
+  const { [key]: tabId } = await chrome.storage.session.get(key)
 
   if (typeof tabId !== 'number') {
     return null
@@ -191,21 +239,34 @@ async function workingTab() {
 
     // Dragged out of the group by the user: it is theirs again.
     if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-      await chrome.storage.session.remove(TAB_KEY)
+      await chrome.storage.session.remove(key)
 
       return null
     }
 
     return tab
   } catch {
-    await chrome.storage.session.remove(TAB_KEY)
+    await chrome.storage.session.remove(key)
 
     return null
   }
 }
 
-async function requireTab() {
-  const tab = await workingTab()
+/** The working tab with this id, whichever agent it belongs to, or null. */
+async function workingTabById(tabId) {
+  for (const port of settings.ports) {
+    const tab = await workingTab(port)
+
+    if (tab?.id === tabId) {
+      return tab
+    }
+  }
+
+  return null
+}
+
+async function requireTab(port) {
+  const tab = await workingTab(port)
 
   if (!tab) {
     throw new Error('No working tab is open. Call `open` with a URL first.')
@@ -215,8 +276,8 @@ async function requireTab() {
 }
 
 /** The working tab, with the page helpers and markings in place. */
-async function readyTab() {
-  const tab = await requireTab()
+async function readyTab(port) {
+  const tab = await requireTab(port)
 
   await inPage(tab.id, paintIndicator, [indicator()])
 
@@ -306,9 +367,9 @@ chrome.tabs.onCreated.addListener(async created => {
     return
   }
 
-  const tab = await workingTab()
+  const tab = typeof created.openerTabId === 'number' ? await workingTabById(created.openerTabId) : null
 
-  if (!tab || created.openerTabId !== tab.id) {
+  if (!tab) {
     return
   }
 
@@ -324,9 +385,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
     return
   }
 
-  const tab = await workingTab()
+  const tab = await workingTabById(tabId)
 
-  if (!tab || tab.id !== tabId) {
+  if (!tab) {
     return
   }
 
@@ -345,7 +406,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
 // ── commands ─────────────────────────────────────────────────────────────────────────────────
 
 const COMMANDS = {
-  async open({ url }) {
+  async open({ url }, port) {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
       throw new Error('`url` must be an absolute http(s) URL.')
     }
@@ -356,7 +417,7 @@ const COMMANDS = {
       throw new Error(`The user has blocked ${blocked} for the agent. Do not try to reach it another way.`)
     }
 
-    let tab = await workingTab()
+    let tab = await workingTab(port)
 
     if (tab) {
       await chrome.tabs.update(tab.id, { url })
@@ -369,7 +430,7 @@ const COMMANDS = {
       const groupId = await chrome.tabs.group({ tabIds: [tab.id] })
 
       await chrome.tabGroups.update(groupId, { collapsed: false, color: settings.groupColor, title: settings.groupTitle })
-      await chrome.storage.session.set({ [TAB_KEY]: tab.id })
+      await chrome.storage.session.set({ [tabKey(port)]: tab.id })
     }
 
     await waitForLoad(tab.id)
@@ -378,8 +439,8 @@ const COMMANDS = {
     return describe(tab.id)
   },
 
-  async read({ max_chars: maxChars, filter, all, offset }) {
-    const tab = await readyTab()
+  async read({ max_chars: maxChars, filter, all, offset }, port) {
+    const tab = await readyTab(port)
 
     return inPage(tab.id, snapshotPage, [
       Number(maxChars) > 0 ? Number(maxChars) : 4000,
@@ -389,8 +450,8 @@ const COMMANDS = {
     ])
   },
 
-  async click({ ref, label }) {
-    const tab = await readyTab()
+  async click({ ref, label }, port) {
+    const tab = await readyTab(port)
 
     lastAgentActionAt = Date.now()
     await inPage(tab.id, clickElement, [targetOf(ref, label)])
@@ -398,8 +459,8 @@ const COMMANDS = {
     return settle(tab.id)
   },
 
-  async type({ ref, label, text, submit }) {
-    const tab = await readyTab()
+  async type({ ref, label, text, submit }, port) {
+    const tab = await readyTab(port)
 
     lastAgentActionAt = Date.now()
     await inPage(tab.id, typeIntoElement, [targetOf(ref, label), String(text ?? ''), Boolean(submit)])
@@ -407,8 +468,8 @@ const COMMANDS = {
     return submit ? settle(tab.id) : describe(tab.id)
   },
 
-  async press_key({ key }) {
-    const tab = await readyTab()
+  async press_key({ key }, port) {
+    const tab = await readyTab(port)
 
     lastAgentActionAt = Date.now()
     await inPage(tab.id, pressKey, [String(key || '')])
@@ -416,14 +477,14 @@ const COMMANDS = {
     return settle(tab.id)
   },
 
-  async scroll({ direction, pages }) {
-    const tab = await readyTab()
+  async scroll({ direction, pages }, port) {
+    const tab = await readyTab(port)
 
     return inPage(tab.id, scrollPage, [String(direction || 'down'), Number(pages) > 0 ? Number(pages) : 1])
   },
 
-  async hover({ ref, label }) {
-    const tab = await readyTab()
+  async hover({ ref, label }, port) {
+    const tab = await readyTab(port)
 
     await inPage(tab.id, hoverElement, [targetOf(ref, label)])
     await new Promise(resolve => setTimeout(resolve, 350))
@@ -432,8 +493,8 @@ const COMMANDS = {
   },
 
   /** Bring the working tab to the front, for work that needs the real screen (computer use). */
-  async show() {
-    const tab = await requireTab()
+  async show(_args, port) {
+    const tab = await requireTab(port)
 
     await chrome.tabs.update(tab.id, { active: true })
     await chrome.windows.update(tab.windowId, { focused: true })
@@ -441,8 +502,8 @@ const COMMANDS = {
     return { shown: true, ...(await describe(tab.id)) }
   },
 
-  async back() {
-    const tab = await requireTab()
+  async back(_args, port) {
+    const tab = await requireTab(port)
 
     // history.back() in the page: chrome.tabs.goBack rejects on tabs whose history Chrome has
     // not recorded as session entries (background tabs navigated by form submits).
@@ -455,15 +516,15 @@ const COMMANDS = {
     return settle(tab.id)
   },
 
-  async wait({ seconds }) {
+  async wait({ seconds }, port) {
     await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(Number(seconds) || 1, 0.1), 10) * 1000))
 
     return { waited: true }
   },
 
   /** Wait until some text shows on the page: results arriving, a dialog opening, a page loading. */
-  async wait_for({ text, seconds }) {
-    const tab = await readyTab()
+  async wait_for({ text, seconds }, port) {
+    const tab = await readyTab(port)
     const wanted = String(text || '').trim().toLowerCase()
 
     if (!wanted) {
@@ -486,7 +547,7 @@ const COMMANDS = {
   },
 
   /** Several steps in one call, so the agent does not have to stop and think between each. */
-  async act({ steps, read_after: readAfter, max_chars: maxChars }) {
+  async act({ steps, read_after: readAfter, max_chars: maxChars }, port) {
     if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) {
       throw new Error(`\`steps\` must be a list of 1 to ${MAX_STEPS} actions.`)
     }
@@ -503,7 +564,7 @@ const COMMANDS = {
       }
 
       try {
-        await COMMANDS[action](step)
+        await COMMANDS[action](step, port)
         done.push(action)
       } catch (error) {
         failure = { step: index + 1, action, error: String(error?.message || error) }
@@ -514,47 +575,48 @@ const COMMANDS = {
     const result = { completed: done.length, of: steps.length, ...(failure ? { failed: failure } : {}) }
 
     if (readAfter === false) {
-      const tab = await workingTab()
+      const tab = await workingTab(port)
 
       return { ...result, ...(tab ? await describe(tab.id) : {}) }
     }
 
-    return { ...result, page: await COMMANDS.read({ max_chars: maxChars }) }
+    return { ...result, page: await COMMANDS.read({ max_chars: maxChars }, port) }
   },
 
-  async close() {
-    const tab = await workingTab()
+  async close(_args, port) {
+    const tab = await workingTab(port)
 
     if (tab) {
       await chrome.tabs.remove(tab.id)
-      await chrome.storage.session.remove(TAB_KEY)
+      await chrome.storage.session.remove(tabKey(port))
     }
 
     return { closed: Boolean(tab) }
   },
 
   /** Maintenance, not an agent tool: pick up edited extension files without a manual reload. */
-  async _reload() {
+  async _reload(_args, port) {
     setTimeout(() => chrome.runtime.reload(), 150)
 
     return { reloading: true }
   },
 
-  async status() {
-    const tab = await workingTab()
+  async status(_args, port) {
+    const tab = await workingTab(port)
 
     return { connected: true, working_tab: tab ? await describe(tab.id) : null }
   }
 }
 
-async function run(command, args) {
+/** Carry out one command for the agent on this port, in that agent's own tab. */
+async function run(port, command, args) {
   const handler = COMMANDS[command]
 
   if (!handler) {
     throw new Error(`Unknown command: ${command}`)
   }
 
-  return handler(args)
+  return handler(args, port)
 }
 
 // ── page functions (serialised into the tab, so each must be self-contained) ─────────────────
