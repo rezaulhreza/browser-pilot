@@ -18,11 +18,14 @@
       <form id="settings">
         <section>
           <h2>Connection</h2>
-          <label for="port">Bridge port</label>
-          <input id="port" name="port" type="number" min="1" max="65535" required />
+          <label for="ports">Bridge ports</label>
+          <input id="ports" name="ports" type="text" inputmode="numeric" placeholder="8790" required />
           <p class="hint">
             The bridge is the small program on this computer that your agent talks to. It listens on
             127.0.0.1 and this port. Change it only if you started the bridge on a different port.
+            To let several agents work at the same time, start one bridge for each on its own port
+            and list the ports here with commas between them, such as 8790, 8791. Each agent gets
+            a tab of its own.
           </p>
         </section>
 

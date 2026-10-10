@@ -77,7 +77,7 @@ Click the toolbar icon to open the settings page.
 
 | Setting | What it does | Default |
 |---|---|---|
-| Bridge port | The port the bridge listens on. Change it only if you started the bridge on another port. | 8790 |
+| Bridge ports | The port the bridge listens on. Change it only if you started the bridge on another port. List several ports, with commas between them, when you run a bridge for each of several agents. | 8790 |
 | Tab group name | The name shown on the agent's tab group and on its label. | Pilot |
 | Colour | The colour of the tab group, the border and the agent's pointer. | Orange |
 | Show border, label and pointer | Switch the markings on the agent's tab on or off. | On |
@@ -92,6 +92,16 @@ The bridge has a few options of its own.
 | `--extension-id` | Accept only this extension. Copy the ID from `chrome://extensions`. | Any |
 | `BROWSER_PILOT_TOKEN` | Set this environment variable to make agents send a password with every request. | Not set |
 | `--allow-host` | Also accept agent requests addressed to this host name. Repeat it for each name, or list the names in `BROWSER_PILOT_ALLOWED_HOSTS` with commas between them. Needs `BROWSER_PILOT_TOKEN`. | `127.0.0.1` and `localhost` only |
+
+### Several agents at the same time
+
+One bridge serves one agent and one working tab. To let two agents work at the same time, start a second bridge on another port and tell the extension about it:
+
+```sh
+python3 bridge/bridge.py --port 8791
+```
+
+Open the extension's settings and write both ports in **Bridge ports**, such as `8790, 8791`. Each agent now has a tab of its own and cannot reach the other's. Each bridge has its own options, so one can ask for a password while the other does not.
 
 ### Reaching the bridge from somewhere else
 

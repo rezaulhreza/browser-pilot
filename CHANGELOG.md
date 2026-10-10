@@ -4,6 +4,7 @@ Notable changes to this project are recorded here. Versions follow [Semantic Ver
 
 ## Unreleased
 
+- The extension can connect to several bridges at once. List the ports on the settings page, such as `8790, 8791`. Each bridge is one agent with a working tab of its own, so two agents can work at the same time without sharing a tab or a password.
 - `--allow-host` and `BROWSER_PILOT_ALLOWED_HOSTS` let the bridge answer agent requests addressed to other host names, for an agent in a container or behind a tunnel. Any number of names can be listed. The bridge refuses to start with an allowed name and no password.
 
 ## 0.1.0
