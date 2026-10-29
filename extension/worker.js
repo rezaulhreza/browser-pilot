@@ -31,6 +31,8 @@ const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
 const GROUP_KEY = 'groupId'
+const TASK_KEY = 'task'
+const MAX_TASK_CHARS = 40
 // A command after this long without one starts a new piece of work: the tab comes to the front.
 const NEW_WORK_GAP_MS = 120_000
 const MAX_PORTS = 8
@@ -229,7 +231,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     const groupId = await agentGroup(port)
 
     if (groupId !== null) {
-      await chrome.tabGroups.update(groupId, { color: colourOf(port), title: settings.groupTitle }).catch(() => undefined)
+      await chrome.tabGroups.update(groupId, { color: colourOf(port), title: await groupName(port) }).catch(() => undefined)
     }
 
     for (const tab of await agentTabs(port)) {
@@ -255,6 +257,36 @@ function groupKey(port) {
   return `${GROUP_KEY}:${port}`
 }
 
+/** Where the task the agent on this port named last is remembered. */
+function taskKey(port) {
+  return `${TASK_KEY}:${port}`
+}
+
+/** The name on the agent's tab group: the name from the settings, then the agent's task. */
+async function groupName(port) {
+  const key = taskKey(port)
+  const { [key]: task } = await chrome.storage.session.get(key)
+
+  return task ? `${settings.groupTitle} · ${task}` : settings.groupTitle
+}
+
+/** Name the agent's tab group after its task, as a few words the user can read at a glance. */
+async function nameTask(port, task) {
+  const words = String(task).replace(/\s+/g, ' ').trim().slice(0, MAX_TASK_CHARS)
+
+  if (!words) {
+    return
+  }
+
+  await chrome.storage.session.set({ [taskKey(port)]: words })
+
+  const groupId = await agentGroup(port)
+
+  if (groupId !== null) {
+    await chrome.tabGroups.update(groupId, { title: await groupName(port) }).catch(() => undefined)
+  }
+}
+
 /** The id of the agent's tab group, or null when it has none. */
 async function agentGroup(port) {
   const key = groupKey(port)
@@ -263,7 +295,8 @@ async function agentGroup(port) {
   if (typeof groupId !== 'number') {
     // Session storage is cleared when the extension reloads, but the group stays open. Take back
     // the one group that carries this agent's name and colour, so its tabs are not left behind.
-    const found = await chrome.tabGroups.query({ title: settings.groupTitle, color: colourOf(port) })
+    const found = (await chrome.tabGroups.query({ color: colourOf(port) }))
+      .filter(group => group.title === settings.groupTitle || group.title?.startsWith(`${settings.groupTitle} · `))
 
     if (found.length !== 1) {
       return null
@@ -338,7 +371,7 @@ async function newTab(port, url) {
   if (groupId === null) {
     const created = await chrome.tabs.group({ tabIds: [tab.id] })
 
-    await chrome.tabGroups.update(created, { collapsed: false, color: colourOf(port), title: settings.groupTitle })
+    await chrome.tabGroups.update(created, { collapsed: false, color: colourOf(port), title: await groupName(port) })
     await chrome.storage.session.set({ [groupKey(port)]: created })
   } else {
     await chrome.tabs.group({ groupId, tabIds: [tab.id] })
@@ -613,8 +646,11 @@ const COMMANDS = {
   async tabs_context(_args, port) {
     const tabs = await agentTabs(port)
     const current = await workingTab(port)
+    const groupId = await agentGroup(port)
+    const group = groupId === null ? null : await chrome.tabGroups.get(groupId).catch(() => null)
 
     return {
+      group: group?.title ?? null,
       tabs: tabs.map(tab => ({ tab_id: tab.id, title: tab.title || '', url: tab.url || tab.pendingUrl || '', current: tab.id === current?.id })),
       current_tab_id: current?.id ?? null,
       ...(tabs.length ? {} : { hint: 'You have no tabs yet. `open` or `tabs_create` starts one.' })
@@ -736,7 +772,7 @@ const COMMANDS = {
     const left = await agentTabs(port)
 
     if (!left.length) {
-      await chrome.storage.session.remove([tabKey(port), groupKey(port)])
+      await chrome.storage.session.remove([tabKey(port), groupKey(port), taskKey(port)])
     }
 
     return { closed: tabs.length, open_tabs: left.length }
@@ -788,6 +824,10 @@ async function run(port, command, args) {
   const pausedFor = Date.now() - (lastCommandAt.get(port) ?? 0)
 
   lastCommandAt.set(port, Date.now())
+
+  if (typeof args.task === 'string') {
+    await nameTask(port, args.task)
+  }
 
   if (args.tab_id !== undefined && args.tab_id !== null) {
     await selectTab(port, args.tab_id)

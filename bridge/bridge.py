@@ -63,6 +63,15 @@ _TAB = {
     "type": "integer",
     "description": "Which of your tabs to work in, from `tabs_context`. It becomes your current tab. Default: your current tab.",
 }
+_TASK = {
+    "type": "string",
+    "maxLength": 40,
+    "description": (
+        "A few words on what you are doing for the user, such as \"Comparing flight prices\". "
+        "Your tab group is named after it, so the user can see what the tabs are for. Give it "
+        "when you start a task or move on to a new one."
+    ),
+}
 _STEP_ACTIONS = ["open", "click", "type", "press_key", "scroll", "hover", "back", "wait", "wait_for"]
 
 TOOLS: List[Dict[str, Any]] = [
@@ -206,9 +215,9 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "tabs_context",
         "description": (
-            "List your tabs: the id, title and URL of each, and which one is current. Call this "
-            "first when you start a task, to see what you already have open. These are only the "
-            "tabs in your own tab group, never the user's other tabs."
+            "List your tabs: the id, title and URL of each, which one is current, and the name of "
+            "your tab group. Call this first when you start a task, to see what you already have "
+            "open. These are only the tabs in your own tab group, never the user's other tabs."
         ),
         "inputSchema": _schema({}),
     },
@@ -231,6 +240,9 @@ TOOLS: List[Dict[str, Any]] = [
 for _tool in TOOLS:
     if _tool["name"] not in ("tabs_context", "tabs_create", "status"):
         _tool["inputSchema"]["properties"]["tab_id"] = _TAB
+    # The tools that start work may name the task the tabs are for.
+    if _tool["name"] in ("open", "act", "tabs_create"):
+        _tool["inputSchema"]["properties"]["task"] = _TASK
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
 
@@ -499,8 +511,9 @@ class Handler(BaseHTTPRequestHandler):
                 "serverInfo": SERVER_INFO,
                 "instructions": (
                     "Drives your own tabs, in your own tab group, in the user's own Chrome. "
-                    "Call `tabs_context` first to see the tabs you have. You cannot see or touch "
-                    "the user's other tabs."
+                    "Call `tabs_context` first to see the tabs you have, and give a short `task` "
+                    "when you open a page, so the user can see what your tabs are for. You cannot "
+                    "see or touch the user's other tabs."
                 ),
             })
         if method == "ping":

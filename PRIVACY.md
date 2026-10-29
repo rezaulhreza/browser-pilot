@@ -16,7 +16,7 @@ What happens next depends on the agent you use. If your agent sends what it read
 
 ## What is stored
 
-The extension stores your settings in Chrome on your computer. These are the bridge ports, the tab group name and colour, whether the markings are shown, whether Chrome switches to the agent's tab, and your list of blocked sites. Nothing else is kept, and the settings are not synced or uploaded.
+The extension stores your settings in Chrome on your computer. These are the bridge ports, the tab group name and colour, whether the markings are shown, whether Chrome switches to the agent's tab, and your list of blocked sites. While Chrome is open, the extension also keeps the ids of the agent's tabs and tab group, and the agent's task name, in memory only. Nothing else is kept, and the settings are not synced or uploaded.
 
 ## Why the extension asks for its permissions
 

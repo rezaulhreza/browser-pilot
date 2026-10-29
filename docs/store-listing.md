@@ -24,7 +24,7 @@ What you get
 
 Its own tab group. The agent keeps its tabs in a tab group of its own and moves between them.
 Your tabs stay private. The agent has no way to list, read or touch a tab outside its group.
-You can see what it is doing. The agent's tabs have a coloured border, a label and a pointer of its own. Your mouse pointer is never moved.
+You can see what it is doing. The tab group is named after the agent's task, and the agent's tabs have a coloured border, a label and a pointer of its own. Your mouse pointer is never moved.
 You see it start. Chrome switches to the agent's tab when it starts work. A setting lets it work in the background instead.
 It tidies up. The agent's tabs are closed when the task is finished.
 Sites you choose are off limits. List the sites the agent must never open.

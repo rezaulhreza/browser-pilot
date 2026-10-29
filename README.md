@@ -8,7 +8,7 @@ It works with any agent that supports MCP (Model Context Protocol, the common wa
 
 - **Its own tab group.** The agent opens its tabs in a tab group of its own, and can keep several pages open and move between them. Links that try to open a new tab are pulled back into the tab they came from.
 - **Your tabs stay private.** The agent has no way to list, read or touch a tab outside its group.
-- **You can see what it is doing.** The agent's tabs have a coloured border, a label, and a pointer of its own that moves to whatever it clicks. Your mouse pointer is never moved.
+- **You can see what it is doing.** The tab group is named after the agent's task. The agent's tabs have a coloured border, a label, and a pointer of its own that moves to whatever it clicks. Your mouse pointer is never moved.
 - **You see it start.** Chrome switches to the agent's tab when the agent opens one, and when the agent starts work again after a pause. Switch this off in the settings to let it work in the background.
 - **It tidies up.** The agent's tabs are closed when the task is finished, or after ten minutes of no activity.
 - **No debugging prompts.** Chrome does not ask you to approve a connection each time.
@@ -120,7 +120,7 @@ The bridge will not start with an allowed name and no password. Only the agent's
 
 | Tool | What it does |
 |---|---|
-| `tabs_context` | List the agent's tabs, with the id, title and address of each, and which one is current |
+| `tabs_context` | List the agent's tabs, with the id, title and address of each, which one is current, and the name of the tab group |
 | `tabs_create` | Open a new tab in the agent's group and make it the current tab |
 | `open` | Load a web address in the current tab, or open the first tab |
 | `act` | Carry out several steps in one go, such as open a site, type a search and submit it, then hand back the page |
@@ -136,6 +136,8 @@ The bridge will not start with an allowed name and no password. Only the agent's
 | `status` | Report whether the extension is connected, what the current tab shows, and how many tabs are open |
 
 Every tool that works in a tab takes an optional `tab_id`, from `tabs_context`. The named tab becomes the current tab. Without it, the tool works in the current tab.
+
+`open`, `act` and `tabs_create` also take an optional `task`: a few words on what the agent is doing, such as "Comparing flight prices". The tab group is then named `Pilot · Comparing flight prices`, so you can see what the agent's tabs are for.
 
 Doing several steps in one go matters more than it sounds. An agent pauses to think between every tool it uses, so three steps in one call is roughly three times quicker than three calls.
 

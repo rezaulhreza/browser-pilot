@@ -170,6 +170,17 @@ class McpProtocolTest(BridgeTestCase):
         for name in ("tabs_context", "tabs_create", "status"):
             self.assertNotIn("tab_id", tools[name]["inputSchema"]["properties"], name)
 
+    def test_the_tools_that_start_work_may_name_the_task(self):
+        _status, reply = self.post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        named = {tool["name"] for tool in reply["result"]["tools"] if "task" in tool["inputSchema"]["properties"]}
+        self.assertEqual(named, {"open", "act", "tabs_create"})
+
+    def test_the_task_reaches_the_extension(self):
+        extension = self.connect(answer=lambda command, args: {"ok": True, "result": args})
+        _is_error, text = self.call("open", url="https://example.com", task="Comparing flight prices")
+        self.assertEqual(json.loads(text)["task"], "Comparing flight prices")
+        self.assertEqual(extension.commands, ["open"])
+
     def test_unknown_method_is_a_json_rpc_error(self):
         _status, reply = self.post({"jsonrpc": "2.0", "id": 7, "method": "resources/list"})
         self.assertEqual(reply["error"]["code"], -32601)
