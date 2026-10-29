@@ -2,15 +2,15 @@
 
 Notable changes to this project are recorded here. Versions follow [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 0.2.0
 
 - The agent works in a tab group of its own and can open several tabs there. `tabs_context` lists the agent's tabs and `tabs_create` opens a new one. Every tool that works in a tab takes an optional `tab_id`. `close` closes one tab, or all of them. The agent still cannot reach a tab outside its group.
 - The agent can name its task with `task` on `open`, `act` and `tabs_create`. The tab group then shows the task after its name, such as `Pilot · Comparing flight prices`.
 - After the extension reloads, the agent takes back its tab group, so its tabs are no longer left behind.
 - Chrome switches to the agent's tab when the agent opens one, and when the agent starts work again after two minutes without a command. A new setting, on by default, switches this off.
-- The extension can connect to several bridges at once. List the ports on the settings page, such as `8790, 8791`. Each bridge is one agent with a working tab of its own, so two agents can work at the same time without sharing a tab or a password.
+- The extension can connect to several bridges at once. List the ports on the settings page, such as `8790, 8791`. Each bridge is one agent with a tab group of its own, so two agents can work at the same time without sharing tabs or a password.
 - `--allow-host` and `BROWSER_PILOT_ALLOWED_HOSTS` let the bridge answer agent requests addressed to other host names, for an agent in a container or behind a tunnel. Any number of names can be listed. The bridge refuses to start with an allowed name and no password.
-- With several bridges, each agent's tab has a colour of its own. The first bridge has the chosen colour and each one after it takes the next.
+- With several bridges, each agent's tab group has a colour of its own. The first bridge has the chosen colour and each one after it takes the next.
 - A maintenance route on the bridge, `POST /admin/extension-ports`, sets the extension's list of bridge ports from this computer, so a second bridge can be added without opening the settings page.
 
 ## 0.1.0
