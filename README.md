@@ -9,7 +9,7 @@ It works with any agent that supports MCP (Model Context Protocol, the common wa
 - **Its own tab group.** The agent opens its tabs in a tab group of its own, and can keep several pages open and move between them. Links that try to open a new tab are pulled back into the tab they came from.
 - **Your tabs stay private.** The agent has no way to list, read or touch a tab outside its group.
 - **You can see what it is doing.** The agent's tabs have a coloured border, a label, and a pointer of its own that moves to whatever it clicks. Your mouse pointer is never moved.
-- **It works in the background.** The agent's tabs open behind your current one and never take focus, unless the agent needs you to see something and says so.
+- **You see it start.** Chrome switches to the agent's tab when the agent opens one, and when the agent starts work again after a pause. Switch this off in the settings to let it work in the background.
 - **It tidies up.** The agent's tabs are closed when the task is finished, or after ten minutes of no activity.
 - **No debugging prompts.** Chrome does not ask you to approve a connection each time.
 - **Sites you choose are off limits.** List the sites the agent must never open, such as your bank.
@@ -81,6 +81,7 @@ Click the toolbar icon to open the settings page.
 | Tab group name | The name shown on the agent's tab group and on its label. | Pilot |
 | Colour | The colour of the tab group, the border and the agent's pointer. | Orange |
 | Show border, label and pointer | Switch the markings on the agent's tabs on or off. | On |
+| Switch to the agent's tab when it starts work | Bring the agent's tab to the front when the agent opens a tab, or starts work again after two minutes without a command. | On |
 | Sites the agent may never open | One site per line. A name also covers everything under it. | None |
 
 The bridge has a few options of its own.

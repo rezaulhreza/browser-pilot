@@ -17,6 +17,8 @@ const DEFAULTS = {
   groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
+  // Switch to the agent's tab when it opens one, or when it starts work again after a pause.
+  bringToFront: true,
   // Host names the agent may never open, one per entry. A name also covers its subdomains.
   blockedSites: []
 }
@@ -29,6 +31,8 @@ const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
 const GROUP_KEY = 'groupId'
+// A command after this long without one starts a new piece of work: the tab comes to the front.
+const NEW_WORK_GAP_MS = 120_000
 const MAX_PORTS = 8
 const MAX_STEPS = 12
 const AGENT_POPUP_WINDOW_MS = 4000
@@ -326,7 +330,7 @@ async function newTab(port, url) {
   const current = await workingTab(port)
   // A new tab sits next to the agent's other tabs, in the same window.
   const tab = await chrome.tabs.create({
-    active: false,
+    active: settings.bringToFront,
     url,
     ...(current ? { windowId: current.windowId, index: current.index + 1 } : {})
   })
@@ -766,6 +770,9 @@ const COMMANDS = {
   }
 }
 
+// When each agent last sent a command, to tell new work from the next step of the last piece.
+const lastCommandAt = new Map()
+
 /** Carry out one command for the agent on this port, in that agent's own tabs. */
 async function run(port, command, args) {
   const handler = COMMANDS[command]
@@ -774,8 +781,26 @@ async function run(port, command, args) {
     throw new Error(`Unknown command: ${command}`)
   }
 
+  if (command.startsWith('_')) {
+    return handler(args, port)
+  }
+
+  const pausedFor = Date.now() - (lastCommandAt.get(port) ?? 0)
+
+  lastCommandAt.set(port, Date.now())
+
   if (args.tab_id !== undefined && args.tab_id !== null) {
     await selectTab(port, args.tab_id)
+  }
+
+  // The agent is starting work again after a pause: switch to its tab so the user can watch.
+  // A tab the agent opens comes to the front by itself (see `newTab`).
+  if (settings.bringToFront && pausedFor > NEW_WORK_GAP_MS && command !== 'close') {
+    const tab = await workingTab(port)
+
+    if (tab) {
+      await bringForward(tab).catch(() => undefined)
+    }
   }
 
   return handler(args, port)

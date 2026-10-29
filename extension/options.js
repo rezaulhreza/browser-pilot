@@ -4,6 +4,7 @@ const DEFAULTS = {
   groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
+  bringToFront: true,
   blockedSites: []
 }
 
@@ -38,6 +39,7 @@ function fill(settings) {
   form.groupTitle.value = settings.groupTitle
   form.groupColor.value = settings.groupColor
   form.showIndicator.checked = settings.showIndicator
+  form.bringToFront.checked = settings.bringToFront
   form.blockedSites.value = settings.blockedSites.join('\n')
 }
 
@@ -90,6 +92,7 @@ form.addEventListener('submit', async event => {
     groupTitle: form.groupTitle.value.trim() || DEFAULTS.groupTitle,
     groupColor: form.groupColor.value,
     showIndicator: form.showIndicator.checked,
+    bringToFront: form.bringToFront.checked,
     blockedSites
   })
 
