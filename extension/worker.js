@@ -257,7 +257,17 @@ async function agentGroup(port) {
   const { [key]: groupId } = await chrome.storage.session.get(key)
 
   if (typeof groupId !== 'number') {
-    return null
+    // Session storage is cleared when the extension reloads, but the group stays open. Take back
+    // the one group that carries this agent's name and colour, so its tabs are not left behind.
+    const found = await chrome.tabGroups.query({ title: settings.groupTitle, color: colourOf(port) })
+
+    if (found.length !== 1) {
+      return null
+    }
+
+    await chrome.storage.session.set({ [key]: found[0].id })
+
+    return found[0].id
   }
 
   try {
