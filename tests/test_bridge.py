@@ -161,6 +161,26 @@ class McpProtocolTest(BridgeTestCase):
             self.assertIs(tool["inputSchema"]["additionalProperties"], False, tool["name"])
             self.assertTrue(set(tool["inputSchema"]["required"]) <= set(tool["inputSchema"]["properties"]))
 
+    def test_every_tool_that_works_in_a_tab_may_name_the_tab(self):
+        _status, reply = self.post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in reply["result"]["tools"]}
+        self.assertTrue({"tabs_context", "tabs_create"} <= set(tools))
+        for name in ("open", "act", "read", "click", "type", "press_key", "scroll", "hover", "show", "back", "close"):
+            self.assertEqual(tools[name]["inputSchema"]["properties"]["tab_id"]["type"], "integer", name)
+        for name in ("tabs_context", "tabs_create", "status"):
+            self.assertNotIn("tab_id", tools[name]["inputSchema"]["properties"], name)
+
+    def test_the_tools_that_start_work_may_name_the_task(self):
+        _status, reply = self.post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        named = {tool["name"] for tool in reply["result"]["tools"] if "task" in tool["inputSchema"]["properties"]}
+        self.assertEqual(named, {"open", "act", "tabs_create"})
+
+    def test_the_task_reaches_the_extension(self):
+        extension = self.connect(answer=lambda command, args: {"ok": True, "result": args})
+        _is_error, text = self.call("open", url="https://example.com", task="Comparing flight prices")
+        self.assertEqual(json.loads(text)["task"], "Comparing flight prices")
+        self.assertEqual(extension.commands, ["open"])
+
     def test_unknown_method_is_a_json_rpc_error(self):
         _status, reply = self.post({"jsonrpc": "2.0", "id": 7, "method": "resources/list"})
         self.assertEqual(reply["error"]["code"], -32601)
@@ -242,6 +262,24 @@ class IdleTabTest(BridgeTestCase):
         self.bridge.extension.last_command_at -= 5
         self.assertFalse(self.bridge.close_idle_tab())
         self.assertEqual(extension.commands, ["open", "close"])
+
+    def test_tabs_left_open_after_closing_one_are_still_closed_when_idle(self):
+        extension = self.connect(answer=lambda command, args: {
+            "ok": True, "result": {"closed": 1, "open_tabs": 1} if command == "close" else {}})
+        self.call("open", url="https://example.com")
+        self.call("tabs_create", url="https://example.org")
+        self.call("close", tab_id=7)
+        self.bridge.extension.last_command_at -= 5
+        self.assertTrue(self.bridge.close_idle_tab())
+        self.assertEqual(extension.commands, ["open", "tabs_create", "close", "close"])
+
+    def test_listing_the_tabs_does_not_keep_them_open(self):
+        extension = self.connect()
+        self.call("open", url="https://example.com")
+        self.bridge.extension.last_command_at -= 5
+        self.call("tabs_context")
+        self.assertTrue(self.bridge.close_idle_tab())
+        self.assertEqual(extension.commands, ["open", "tabs_context", "close"])
 
 
 class WebPageGuardTest(BridgeTestCase):

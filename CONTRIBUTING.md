@@ -26,7 +26,7 @@ Then try your change in a real browser. Load the `extension` folder on `chrome:/
 
 ## Ground rules
 
-- **The agent keeps to its own tab.** Do not add a tool that lists, reads or changes any other tab. This is the promise the project makes to the people who install it.
+- **The agent keeps to its own tab group.** Do not add a tool that lists, reads or changes a tab outside the agent's group. This is the promise the project makes to the people who install it.
 - **The bridge uses the Python standard library only.** No packages to install.
 - **The extension has no build step and loads no code from the internet.** Plain JavaScript files only.
 - **The bridge listens on this computer only.**

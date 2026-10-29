@@ -1,14 +1,14 @@
 /**
  * Browser Pilot, the browser half.
  *
- * Holds a WebSocket to each local bridge (127.0.0.1) and carries out the agent's commands in ONE
- * working tab, kept in its own tab group. Everything is addressed at that tab only: the agent
- * has no command that lists, reads or changes any other tab, so the user's own tabs stay private
- * and undisturbed. The working tab opens in the background and shows a border and a badge while
- * it is under the agent's control.
+ * Holds a WebSocket to each local bridge (127.0.0.1) and carries out the agent's commands in the
+ * agent's OWN tab group. The agent may open several tabs in that group and move between them, but
+ * it has no command that lists, reads or changes a tab outside it, so the user's own tabs stay
+ * private. Each command works on the agent's current tab, or on the tab it names by id. A tab
+ * under the agent's control shows a border and a badge.
  *
- * Each bridge is one agent, and it gets a working tab of its own. An agent on one bridge cannot
- * reach the tab of an agent on another.
+ * Each bridge is one agent, and it gets a tab group of its own. An agent on one bridge cannot
+ * reach the tabs of an agent on another.
  */
 
 const DEFAULTS = {
@@ -17,6 +17,8 @@ const DEFAULTS = {
   groupTitle: 'Pilot',
   groupColor: 'orange',
   showIndicator: true,
+  // Switch to the agent's tab when it opens one, or when it starts work again after a pause.
+  bringToFront: true,
   // Host names the agent may never open, one per entry. A name also covers its subdomains.
   blockedSites: []
 }
@@ -28,6 +30,11 @@ const GROUP_COLORS = {
 const LOAD_TIMEOUT_MS = 20_000
 const KEEPALIVE_MS = 20_000
 const TAB_KEY = 'workingTabId'
+const GROUP_KEY = 'groupId'
+const TASK_KEY = 'task'
+const MAX_TASK_CHARS = 40
+// A command after this long without one starts a new piece of work: the tab comes to the front.
+const NEW_WORK_GAP_MS = 120_000
 const MAX_PORTS = 8
 const MAX_STEPS = 12
 const AGENT_POPUP_WINDOW_MS = 4000
@@ -221,10 +228,13 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   await connect()
 
   for (const port of settings.ports) {
-    const tab = await workingTab(port)
+    const groupId = await agentGroup(port)
 
-    if (tab) {
-      await chrome.tabGroups.update(tab.groupId, { color: colourOf(port), title: settings.groupTitle }).catch(() => undefined)
+    if (groupId !== null) {
+      await chrome.tabGroups.update(groupId, { color: colourOf(port), title: await groupName(port) }).catch(() => undefined)
+    }
+
+    for (const tab of await agentTabs(port)) {
       await inPage(tab.id, paintIndicator, [indicator(port)]).catch(() => undefined)
     }
   }
@@ -232,45 +242,167 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 
 void connect()
 
-// ── the working tab ──────────────────────────────────────────────────────────────────────────
+// ── the agent's tabs ─────────────────────────────────────────────────────────────────────────
 
-/** Where the working tab of the agent on this port is remembered. */
+// The agent's tabs are the tabs in its tab group. Its current tab is the one a command works on
+// when the command names no tab. A tab the user drags out of the group is theirs again.
+
+/** Where the current tab of the agent on this port is remembered. */
 function tabKey(port) {
   return `${TAB_KEY}:${port}`
 }
 
-async function workingTab(port) {
-  const key = tabKey(port)
-  const { [key]: tabId } = await chrome.storage.session.get(key)
+/** Where the tab group of the agent on this port is remembered. */
+function groupKey(port) {
+  return `${GROUP_KEY}:${port}`
+}
 
-  if (typeof tabId !== 'number') {
-    return null
+/** Where the task the agent on this port named last is remembered. */
+function taskKey(port) {
+  return `${TASK_KEY}:${port}`
+}
+
+/** The name on the agent's tab group: the name from the settings, then the agent's task. */
+async function groupName(port) {
+  const key = taskKey(port)
+  const { [key]: task } = await chrome.storage.session.get(key)
+
+  return task ? `${settings.groupTitle} · ${task}` : settings.groupTitle
+}
+
+/** Name the agent's tab group after its task, as a few words the user can read at a glance. */
+async function nameTask(port, task) {
+  const words = String(task).replace(/\s+/g, ' ').trim().slice(0, MAX_TASK_CHARS)
+
+  if (!words) {
+    return
   }
 
-  try {
-    const tab = await chrome.tabs.get(tabId)
+  await chrome.storage.session.set({ [taskKey(port)]: words })
 
-    // Dragged out of the group by the user: it is theirs again.
-    if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-      await chrome.storage.session.remove(key)
+  const groupId = await agentGroup(port)
 
+  if (groupId !== null) {
+    await chrome.tabGroups.update(groupId, { title: await groupName(port) }).catch(() => undefined)
+  }
+}
+
+/** The id of the agent's tab group, or null when it has none. */
+async function agentGroup(port) {
+  const key = groupKey(port)
+  const { [key]: groupId } = await chrome.storage.session.get(key)
+
+  if (typeof groupId !== 'number') {
+    // Session storage is cleared when the extension reloads, but the group stays open. Take back
+    // the one group that carries this agent's name and colour, so its tabs are not left behind.
+    const found = (await chrome.tabGroups.query({ color: colourOf(port) }))
+      .filter(group => group.title === settings.groupTitle || group.title?.startsWith(`${settings.groupTitle} · `))
+
+    if (found.length !== 1) {
       return null
     }
 
-    return tab
+    await chrome.storage.session.set({ [key]: found[0].id })
+
+    return found[0].id
+  }
+
+  try {
+    await chrome.tabGroups.get(groupId)
+
+    return groupId
   } catch {
+    // Chrome removes a group once its last tab is closed or dragged out.
     await chrome.storage.session.remove(key)
 
     return null
   }
 }
 
-/** The port of the agent whose working tab has this id, or null when it is nobody's. */
-async function portOfTab(tabId) {
-  for (const port of settings.ports) {
-    const tab = await workingTab(port)
+/** Every tab in the agent's group, in the order they appear in the window. */
+async function agentTabs(port) {
+  const groupId = await agentGroup(port)
 
-    if (tab?.id === tabId) {
+  if (groupId === null) {
+    return []
+  }
+
+  return (await chrome.tabs.query({ groupId })).sort((a, b) => a.index - b.index)
+}
+
+/** The agent's current tab. When it was closed, another of the agent's tabs takes its place. */
+async function workingTab(port) {
+  const key = tabKey(port)
+  const { [key]: tabId } = await chrome.storage.session.get(key)
+  const tabs = await agentTabs(port)
+  const tab = tabs.find(each => each.id === tabId) || tabs[tabs.length - 1] || null
+
+  if (tab?.id !== tabId) {
+    await (tab ? chrome.storage.session.set({ [key]: tab.id }) : chrome.storage.session.remove(key))
+  }
+
+  return tab
+}
+
+/** Make one of the agent's tabs its current tab. Any other tab id is refused. */
+async function selectTab(port, tabId) {
+  const tab = (await agentTabs(port)).find(each => each.id === Number(tabId))
+
+  if (!tab) {
+    throw new Error(`Tab ${tabId} is not one of your tabs. Call \`tabs_context\` to see the tabs you have.`)
+  }
+
+  await chrome.storage.session.set({ [tabKey(port)]: tab.id })
+
+  return tab
+}
+
+/** Open a new tab in the agent's group, starting the group if there is none, and make it current. */
+async function newTab(port, url) {
+  const groupId = await agentGroup(port)
+  const current = await workingTab(port)
+  // A new tab sits next to the agent's other tabs, in the same window.
+  const tab = await chrome.tabs.create({
+    active: settings.bringToFront,
+    url,
+    ...(current ? { windowId: current.windowId, index: current.index + 1 } : {})
+  })
+
+  if (groupId === null) {
+    const created = await chrome.tabs.group({ tabIds: [tab.id] })
+
+    await chrome.tabGroups.update(created, { collapsed: false, color: colourOf(port), title: await groupName(port) })
+    await chrome.storage.session.set({ [groupKey(port)]: created })
+  } else {
+    await chrome.tabs.group({ groupId, tabIds: [tab.id] })
+  }
+
+  await chrome.storage.session.set({ [tabKey(port)]: tab.id })
+
+  return tab
+}
+
+/** Switch the agent's window to this tab, and open the group if the user collapsed it. */
+async function bringForward(tab) {
+  await chrome.tabs.update(tab.id, { active: true })
+
+  if (tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+    await chrome.tabGroups.update(tab.groupId, { collapsed: false }).catch(() => undefined)
+  }
+}
+
+/** The port of the agent whose group holds this tab, or null when the tab is nobody's. */
+async function portOfTab(tabId) {
+  let tab
+
+  try {
+    tab = await chrome.tabs.get(tabId)
+  } catch {
+    return null
+  }
+
+  for (const port of settings.ports) {
+    if (tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE && tab.groupId === (await agentGroup(port))) {
       return port
     }
   }
@@ -282,13 +414,13 @@ async function requireTab(port) {
   const tab = await workingTab(port)
 
   if (!tab) {
-    throw new Error('No working tab is open. Call `open` with a URL first.')
+    throw new Error('You have no tab open. Call `open` with a URL, or `tabs_create`, first.')
   }
 
   return tab
 }
 
-/** The working tab, with the page helpers and markings in place. */
+/** The current tab, with the page helpers and markings in place. */
 async function readyTab(port) {
   const tab = await requireTab(port)
 
@@ -335,7 +467,7 @@ async function describe(tabId) {
   return { title: tab.title || '', url: tab.url || tab.pendingUrl || '' }
 }
 
-/** Run a self-contained function in the working tab's page. */
+/** Run a self-contained function in the page of one of the agent's tabs. */
 async function inPage(tabId, func, args = []) {
   let frames
 
@@ -369,10 +501,10 @@ async function settle(tabId, port) {
   return describe(tabId)
 }
 
-// A page the AGENT's action opens in a NEW tab is pulled back into the working tab, so the agent
-// never spreads beyond its one tab. A tab the user opens while looking at the working tab also
-// names it as its opener, so only a web page that appears moments after an agent action counts:
-// the user's own new tab (Cmd+T, or a link they open themselves) is left alone.
+// A page the AGENT's action opens in a NEW tab is pulled back into the tab that opened it, so the
+// agent has only the tabs it opens on purpose. A tab the user opens while looking at an agent's
+// tab also names it as its opener, so only a web page that appears moments after an agent action
+// counts: the user's own new tab (Cmd+T, or a link they open themselves) is left alone.
 chrome.tabs.onCreated.addListener(async created => {
   const url = created.pendingUrl || created.url || ''
 
@@ -399,13 +531,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   }
 
   const port = await portOfTab(tabId)
-  const tab = port === null ? null : await workingTab(port)
+  const tab = port === null ? null : await chrome.tabs.get(tabId).catch(() => null)
 
   if (!tab) {
     return
   }
 
-  // A link or redirect led the working tab to a blocked site: leave it at once.
+  // A link or redirect led one of the agent's tabs to a blocked site: leave it at once.
   if (blockedBy(tab.url || '')) {
     await chrome.tabs.update(tabId, { url: 'about:blank' }).catch(() => undefined)
 
@@ -438,13 +570,7 @@ const COMMANDS = {
       // The tab still reports the old page as complete for a moment after a new URL is set.
       await new Promise(resolve => setTimeout(resolve, 350))
     } else {
-      // In the background: the user's active tab and focus are left alone.
-      tab = await chrome.tabs.create({ active: false, url })
-
-      const groupId = await chrome.tabs.group({ tabIds: [tab.id] })
-
-      await chrome.tabGroups.update(groupId, { collapsed: false, color: colourOf(port), title: settings.groupTitle })
-      await chrome.storage.session.set({ [tabKey(port)]: tab.id })
+      tab = await newTab(port, url)
     }
 
     await waitForLoad(tab.id)
@@ -506,14 +632,51 @@ const COMMANDS = {
     return describe(tab.id)
   },
 
-  /** Bring the working tab to the front, for work that needs the real screen (computer use). */
+  /** Bring the current tab to the front, for work that needs the real screen (computer use). */
   async show(_args, port) {
     const tab = await requireTab(port)
 
-    await chrome.tabs.update(tab.id, { active: true })
+    await bringForward(tab)
     await chrome.windows.update(tab.windowId, { focused: true })
 
     return { shown: true, ...(await describe(tab.id)) }
+  },
+
+  /** The agent's tabs: id, title and address of each, and which one is current. */
+  async tabs_context(_args, port) {
+    const tabs = await agentTabs(port)
+    const current = await workingTab(port)
+    const groupId = await agentGroup(port)
+    const group = groupId === null ? null : await chrome.tabGroups.get(groupId).catch(() => null)
+
+    return {
+      group: group?.title ?? null,
+      tabs: tabs.map(tab => ({ tab_id: tab.id, title: tab.title || '', url: tab.url || tab.pendingUrl || '', current: tab.id === current?.id })),
+      current_tab_id: current?.id ?? null,
+      ...(tabs.length ? {} : { hint: 'You have no tabs yet. `open` or `tabs_create` starts one.' })
+    }
+  },
+
+  /** A new tab in the agent's group, which becomes its current tab. */
+  async tabs_create({ url }, port) {
+    if (url !== undefined && (typeof url !== 'string' || !/^https?:\/\//i.test(url))) {
+      throw new Error('`url` must be an absolute http(s) URL.')
+    }
+
+    const blocked = url ? blockedBy(url) : null
+
+    if (blocked) {
+      throw new Error(`The user has blocked ${blocked} for the agent. Do not try to reach it another way.`)
+    }
+
+    const tab = await newTab(port, url || 'about:blank')
+
+    if (url) {
+      await waitForLoad(tab.id)
+      await inPage(tab.id, paintIndicator, [indicator(port)]).catch(() => undefined)
+    }
+
+    return { tab_id: tab.id, ...(await describe(tab.id)) }
   },
 
   async back(_args, port) {
@@ -597,15 +760,22 @@ const COMMANDS = {
     return { ...result, page: await COMMANDS.read({ max_chars: maxChars }, port) }
   },
 
-  async close(_args, port) {
-    const tab = await workingTab(port)
+  /** Close the tab named by `tab_id`, or every one of the agent's tabs when no tab is named. */
+  async close({ tab_id: tabId }, port) {
+    // `run` has already made the named tab current.
+    const tabs = tabId === undefined ? await agentTabs(port) : [await workingTab(port)].filter(Boolean)
 
-    if (tab) {
-      await chrome.tabs.remove(tab.id)
-      await chrome.storage.session.remove(tabKey(port))
+    if (tabs.length) {
+      await chrome.tabs.remove(tabs.map(tab => tab.id))
     }
 
-    return { closed: Boolean(tab) }
+    const left = await agentTabs(port)
+
+    if (!left.length) {
+      await chrome.storage.session.remove([tabKey(port), groupKey(port), taskKey(port)])
+    }
+
+    return { closed: tabs.length, open_tabs: left.length }
   },
 
   /** Maintenance, not an agent tool: pick up edited extension files without a manual reload. */
@@ -628,16 +798,49 @@ const COMMANDS = {
   async status(_args, port) {
     const tab = await workingTab(port)
 
-    return { connected: true, working_tab: tab ? await describe(tab.id) : null }
+    return {
+      connected: true,
+      current_tab: tab ? { tab_id: tab.id, ...(await describe(tab.id)) } : null,
+      open_tabs: (await agentTabs(port)).length
+    }
   }
 }
 
-/** Carry out one command for the agent on this port, in that agent's own tab. */
+// When each agent last sent a command, to tell new work from the next step of the last piece.
+const lastCommandAt = new Map()
+
+/** Carry out one command for the agent on this port, in that agent's own tabs. */
 async function run(port, command, args) {
   const handler = COMMANDS[command]
 
   if (!handler) {
     throw new Error(`Unknown command: ${command}`)
+  }
+
+  if (command.startsWith('_')) {
+    return handler(args, port)
+  }
+
+  const pausedFor = Date.now() - (lastCommandAt.get(port) ?? 0)
+
+  lastCommandAt.set(port, Date.now())
+
+  if (typeof args.task === 'string') {
+    await nameTask(port, args.task)
+  }
+
+  if (args.tab_id !== undefined && args.tab_id !== null) {
+    await selectTab(port, args.tab_id)
+  }
+
+  // The agent is starting work again after a pause: switch to its tab so the user can watch.
+  // A tab the agent opens comes to the front by itself (see `newTab`).
+  if (settings.bringToFront && pausedFor > NEW_WORK_GAP_MS && command !== 'close') {
+    const tab = await workingTab(port)
+
+    if (tab) {
+      await bringForward(tab).catch(() => undefined)
+    }
   }
 
   return handler(args, port)
@@ -928,7 +1131,7 @@ async function clickElement(target) {
   document.documentElement.append(ring)
   setTimeout(() => ring.remove(), 800)
 
-  // Keep links that would open a new tab inside the working tab.
+  // Keep links that would open a new tab inside the same tab.
   if (element.tagName === 'A' && element.target && element.target !== '_self') {
     element.target = '_self'
   }

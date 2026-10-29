@@ -10,7 +10,7 @@
     <main>
       <h1>Browser Pilot</h1>
       <p class="lead">
-        Your agent works in one tab, kept in its own tab group. It cannot see or change any other tab.
+        Your agent works in its own tab group. It can open several tabs there, but it cannot see or change any tab outside the group.
       </p>
 
       <p id="status" class="status" role="status">Checking the connection</p>
@@ -25,12 +25,12 @@
             127.0.0.1 and this port. Change it only if you started the bridge on a different port.
             To let several agents work at the same time, start one bridge for each on its own port
             and list the ports here with commas between them, such as 8790, 8791. Each agent gets
-            a tab of its own.
+            a tab group of its own.
           </p>
         </section>
 
         <section>
-          <h2>The agent's tab</h2>
+          <h2>The agent's tabs</h2>
           <label for="groupTitle">Tab group name</label>
           <input id="groupTitle" name="groupTitle" type="text" maxlength="24" required />
 
@@ -54,8 +54,18 @@
 
           <label class="check">
             <input id="showIndicator" name="showIndicator" type="checkbox" />
-            Show a border, a label and the agent's pointer on the tab it is working in
+            Show a border, a label and the agent's pointer on the tabs it is working in
           </label>
+
+          <label class="check">
+            <input id="bringToFront" name="bringToFront" type="checkbox" />
+            Switch to the agent's tab when it starts work
+          </label>
+          <p class="hint">
+            The agent's tab comes to the front when the agent opens it, and when the agent starts
+            work again after two minutes without a command. Switch this off to let the agent work
+            in the background while you use your own tabs.
+          </p>
         </section>
 
         <section>

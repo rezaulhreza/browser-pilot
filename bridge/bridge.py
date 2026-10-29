@@ -59,23 +59,36 @@ _LABEL = {
         "page yet, or after a step that changed the page."
     ),
 }
+_TAB = {
+    "type": "integer",
+    "description": "Which of your tabs to work in, from `tabs_context`. It becomes your current tab. Default: your current tab.",
+}
+_TASK = {
+    "type": "string",
+    "maxLength": 40,
+    "description": (
+        "A few words on what you are doing for the user, such as \"Comparing flight prices\". "
+        "Your tab group is named after it, so the user can see what the tabs are for. Give it "
+        "when you start a task or move on to a new one."
+    ),
+}
 _STEP_ACTIONS = ["open", "click", "type", "press_key", "scroll", "hover", "back", "wait", "wait_for"]
 
 TOOLS: List[Dict[str, Any]] = [
     {
         "name": "open",
         "description": (
-            "Load a URL in your working tab in the user's own Chrome. The tab lives in its own tab "
-            "group; it is created on first use and reused afterwards, so there is only ever one. "
-            "It opens in the background: the user keeps working in their own tabs, which you "
-            "cannot see or touch. Returns the page title and final URL; call `read` to see content."
+            "Load a URL in your current tab in the user's own Chrome. Your tabs live in your own tab "
+            "group; when you have none, this opens one. The user's other tabs are private: you "
+            "cannot see or touch them. Returns the page title and final URL; call `read` to see "
+            "content. To keep a page open and load another, use `tabs_create`."
         ),
         "inputSchema": _schema({"url": {"type": "string", "description": "Absolute http(s) URL."}}, ["url"]),
     },
     {
         "name": "act",
         "description": (
-            "Do several things in the working tab in ONE call, then get the resulting page back. "
+            "Do several things in one tab in ONE call, then get the resulting page back. "
             "Prefer this over separate calls whenever you already know the next few steps, for "
             "example open a site, type a search and submit it, or fill in a form and press a "
             "button: every call you save is time the user does not wait. Steps run in order and "
@@ -115,7 +128,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "read",
         "description": (
-            "Read the working tab: title, URL, page text, and a numbered list of the interactive "
+            "Read your current tab: title, URL, page text, and a numbered list of the interactive "
             "elements currently on screen (links, buttons, inputs) whose `ref` you pass to click, "
             "type and hover. Refs are only valid until the page changes. The text comes in pages: "
             "when `text_remaining` is present, read again with `offset` set to `next_offset`."
@@ -129,7 +142,7 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "click",
-        "description": "Click an element in the working tab, by `ref` or by `label`. Returns the page title and URL afterwards.",
+        "description": "Click an element in the tab, by `ref` or by `label`. Returns the page title and URL afterwards.",
         "inputSchema": _schema({"ref": _REF, "label": _LABEL}),
     },
     {
@@ -148,7 +161,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "press_key",
         "description": (
-            "Press a key in the working tab, sent to the focused element: Enter, Escape, Tab, "
+            "Press a key in the tab, sent to the focused element: Enter, Escape, Tab, "
             "Space, Backspace, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, PageDown, PageUp."
         ),
         "inputSchema": _schema({"key": {"type": "string"}}, ["key"]),
@@ -156,7 +169,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "scroll",
         "description": (
-            "Scroll the working tab (the page, or its main inner panel on app-style layouts). Use it "
+            "Scroll the tab (the page, or its main inner panel on app-style layouts). Use it "
             "to load lazy content or reach elements further down, then read again. The result says "
             "how far it moved; if it reports 0 and content is still missing, call `show` and scroll "
             "with a screen-control tool if you have one."
@@ -169,7 +182,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "hover",
         "description": (
-            "Move the pointer over an element in the working tab, by `ref` or by `label`, to reveal a menu or a "
+            "Move the pointer over an element in the tab, by `ref` or by `label`, to reveal a menu or a "
             "tooltip that is part of the page. Read again afterwards. Anything drawn as a picture "
             "rather than written as text will not appear in what you read."
         ),
@@ -178,7 +191,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "show",
         "description": (
-            "Bring your working tab to the front of the user's Chrome window. Call this before "
+            "Bring your current tab to the front of the user's Chrome window. Call this before "
             "using a screen-control tool (computer use) on it, which is the way to handle what the "
             "page tools cannot: content that is drawn rather than written (graphics, video, embedded "
             "frames), a page that will not scroll, drag gestures, or a click that has no effect "
@@ -188,20 +201,48 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "back",
-        "description": "Go back one page in the working tab's history.",
+        "description": "Go back one page in the tab's history.",
         "inputSchema": _schema({}),
     },
     {
         "name": "close",
-        "description": "Close your working tab. Do this when the task is finished, unless the user asked to keep the page open.",
+        "description": (
+            "Close the tab named by `tab_id`, or all of your tabs when you name none. Close all of "
+            "them when the task is finished, unless the user asked to keep the pages open."
+        ),
         "inputSchema": _schema({}),
     },
     {
+        "name": "tabs_context",
+        "description": (
+            "List your tabs: the id, title and URL of each, which one is current, and the name of "
+            "your tab group. Call this first when you start a task, to see what you already have "
+            "open. These are only the tabs in your own tab group, never the user's other tabs."
+        ),
+        "inputSchema": _schema({}),
+    },
+    {
+        "name": "tabs_create",
+        "description": (
+            "Open a new tab in your tab group, next to your other tabs, and make it your current "
+            "tab. Use it to keep one page open while you work on another, then move between them "
+            "with `tab_id`. Returns the new tab's id, title and URL."
+        ),
+        "inputSchema": _schema({"url": {"type": "string", "description": "Absolute http(s) URL. Default: a blank tab."}}),
+    },
+    {
         "name": "status",
-        "description": "Whether the Chrome extension is connected and what your working tab currently shows.",
+        "description": "Whether the Chrome extension is connected, what your current tab shows, and how many tabs you have.",
         "inputSchema": _schema({}),
     },
 ]
+# Every tool that works in a tab may name which of the agent's tabs to work in.
+for _tool in TOOLS:
+    if _tool["name"] not in ("tabs_context", "tabs_create", "status"):
+        _tool["inputSchema"]["properties"]["tab_id"] = _TAB
+    # The tools that start work may name the task the tabs are for.
+    if _tool["name"] in ("open", "act", "tabs_create"):
+        _tool["inputSchema"]["properties"]["task"] = _TASK
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
 
@@ -329,20 +370,25 @@ class Bridge:
         if name not in TOOL_NAMES:
             return {"ok": False, "error": f"Unknown tool: {name}"}
         response = self.extension.command(name, args)
-        if response.get("ok") and name != "status":
+        if response.get("ok") and name not in ("status", "tabs_context"):
             self.extension.last_command_at = time.time()
-            self.extension.tab_open = name != "close"
+            if name == "close":
+                # Closing one tab of several leaves the rest for the idle sweep to close.
+                result = response.get("result")
+                self.extension.tab_open = bool(isinstance(result, dict) and result.get("open_tabs"))
+            else:
+                self.extension.tab_open = True
         return response
 
     def close_idle_tab(self) -> bool:
-        """Close the working tab once the agent has left it alone long enough, so a finished task
-        never leaves a tab behind even if the model forgets to close it."""
+        """Close the agent's tabs once it has left them alone long enough, so a finished task
+        never leaves tabs behind even if the model forgets to close them."""
         extension = self.extension
         if self.idle_close_seconds <= 0 or not (extension.tab_open and extension.connected):
             return False
         if time.time() - extension.last_command_at < self.idle_close_seconds:
             return False
-        log.info("working tab idle for %ss: closing it", self.idle_close_seconds)
+        log.info("agent tabs idle for %ss: closing them", self.idle_close_seconds)
         extension.command("close", {"reason": "idle"}, timeout=10)
         extension.tab_open = False
         return True
@@ -464,8 +510,10 @@ class Handler(BaseHTTPRequestHandler):
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "Drives one working tab, in its own tab group, in the user's own Chrome. "
-                    "You cannot see or touch the user's other tabs."
+                    "Drives your own tabs, in your own tab group, in the user's own Chrome. "
+                    "Call `tabs_context` first to see the tabs you have, and give a short `task` "
+                    "when you open a page, so the user can see what your tabs are for. You cannot "
+                    "see or touch the user's other tabs."
                 ),
             })
         if method == "ping":
@@ -565,7 +613,7 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help=f"Port on 127.0.0.1 (default {DEFAULT_PORT}).")
     parser.add_argument("--idle-close-seconds", type=int,
                         default=int(env.get("BROWSER_PILOT_IDLE_CLOSE_SECONDS", DEFAULT_IDLE_CLOSE_SECONDS)),
-                        help="Close the working tab after this long without a command. 0 never closes it.")
+                        help="Close the agent's tabs after this long without a command. 0 never closes them.")
     parser.add_argument("--extension-id", action="append", default=[],
                         help="Only accept this extension ID (repeatable). Default accepts any extension.")
     parser.add_argument("--allow-host", action="append", default=[],

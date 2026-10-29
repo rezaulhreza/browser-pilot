@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Browser Pilot",
   "version": "0.1.0",
-  "description": "Gives your own AI agent one tab to work in, inside the Chrome you already use. Your other tabs stay private.",
+  "description": "Gives your own AI agent a tab group to work in, inside the Chrome you already use. Your other tabs stay private.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs", "tabGroups", "scripting", "alarms", "storage"],
   "host_permissions": ["<all_urls>"],
