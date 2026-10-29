@@ -1,16 +1,16 @@
 # Browser Pilot
 
-Browser Pilot gives your own AI agent one tab to work in, inside the Chrome you already use. The agent can open pages, read them, click, type and scroll in that tab. It cannot see or change any of your other tabs, so you carry on with your own work while it gets on with its task.
+Browser Pilot gives your own AI agent a tab group to work in, inside the Chrome you already use. The agent can open tabs in that group, read the pages, and click, type and scroll in them. It cannot see or change any of your other tabs, so your own tabs stay private.
 
 It works with any agent that supports MCP (Model Context Protocol, the common way AI agents connect to tools), such as [Hermes Agent](https://github.com/NousResearch/hermes-agent), Claude Code or Cursor. It is an independent open-source project and is not connected with any of them.
 
 ## What you get
 
-- **One tab, in its own tab group.** Every page the agent visits loads in the same tab. Links that try to open a new tab are pulled back into it.
-- **Your tabs stay private.** The agent has no way to list, read or touch any other tab.
-- **You can see what it is doing.** The agent's tab has a coloured border, a label, and a pointer of its own that moves to whatever it clicks. Your mouse pointer is never moved.
-- **It works in the background.** The tab opens behind your current one and never takes focus, unless the agent needs you to see something and says so.
-- **It tidies up.** The tab is closed when the task is finished, or after ten minutes of no activity.
+- **Its own tab group.** The agent opens its tabs in a tab group of its own, and can keep several pages open and move between them. Links that try to open a new tab are pulled back into the tab they came from.
+- **Your tabs stay private.** The agent has no way to list, read or touch a tab outside its group.
+- **You can see what it is doing.** The agent's tabs have a coloured border, a label, and a pointer of its own that moves to whatever it clicks. Your mouse pointer is never moved.
+- **It works in the background.** The agent's tabs open behind your current one and never take focus, unless the agent needs you to see something and says so.
+- **It tidies up.** The agent's tabs are closed when the task is finished, or after ten minutes of no activity.
 - **No debugging prompts.** Chrome does not ask you to approve a connection each time.
 - **Sites you choose are off limits.** List the sites the agent must never open, such as your bank.
 
@@ -80,7 +80,7 @@ Click the toolbar icon to open the settings page.
 | Bridge ports | The port the bridge listens on. Change it only if you started the bridge on another port. List several ports, with commas between them, when you run a bridge for each of several agents. | 8790 |
 | Tab group name | The name shown on the agent's tab group and on its label. | Pilot |
 | Colour | The colour of the tab group, the border and the agent's pointer. | Orange |
-| Show border, label and pointer | Switch the markings on the agent's tab on or off. | On |
+| Show border, label and pointer | Switch the markings on the agent's tabs on or off. | On |
 | Sites the agent may never open | One site per line. A name also covers everything under it. | None |
 
 The bridge has a few options of its own.
@@ -88,20 +88,20 @@ The bridge has a few options of its own.
 | Option | What it does | Default |
 |---|---|---|
 | `--port` | Port to listen on. | 8790 |
-| `--idle-close-seconds` | Close the agent's tab after this long without activity. Use 0 to leave it open. | 600 |
+| `--idle-close-seconds` | Close the agent's tabs after this long without activity. Use 0 to leave them open. | 600 |
 | `--extension-id` | Accept only this extension. Copy the ID from `chrome://extensions`. | Any |
 | `BROWSER_PILOT_TOKEN` | Set this environment variable to make agents send a password with every request. | Not set |
 | `--allow-host` | Also accept agent requests addressed to this host name. Repeat it for each name, or list the names in `BROWSER_PILOT_ALLOWED_HOSTS` with commas between them. Needs `BROWSER_PILOT_TOKEN`. | `127.0.0.1` and `localhost` only |
 
 ### Several agents at the same time
 
-One bridge serves one agent and one working tab. To let two agents work at the same time, start a second bridge on another port and tell the extension about it:
+One bridge serves one agent and its tab group. To let two agents work at the same time, start a second bridge on another port and tell the extension about it:
 
 ```sh
 python3 bridge/bridge.py --port 8791
 ```
 
-Open the extension's settings and write both ports in **Bridge ports**, such as `8790, 8791`. Each agent now has a tab of its own and cannot reach the other's. Each bridge has its own options, so one can ask for a password while the other does not.
+Open the extension's settings and write both ports in **Bridge ports**, such as `8790, 8791`. Each agent now has a tab group of its own and cannot reach the other's tabs. Each bridge has its own options, so one can ask for a password while the other does not.
 
 ### Reaching the bridge from somewhere else
 
@@ -119,7 +119,9 @@ The bridge will not start with an allowed name and no password. Only the agent's
 
 | Tool | What it does |
 |---|---|
-| `open` | Load a web address in the agent's tab |
+| `tabs_context` | List the agent's tabs, with the id, title and address of each, and which one is current |
+| `tabs_create` | Open a new tab in the agent's group and make it the current tab |
+| `open` | Load a web address in the current tab, or open the first tab |
 | `act` | Carry out several steps in one go, such as open a site, type a search and submit it, then hand back the page |
 | `read` | Get the page text and a numbered list of the links, buttons and fields on screen |
 | `click` | Click an item, by its number or by its visible text |
@@ -127,10 +129,12 @@ The bridge will not start with an allowed name and no password. Only the agent's
 | `press_key` | Press a key such as Enter, Escape or Tab |
 | `scroll` | Scroll the page, or its main panel on pages that scroll inside a frame |
 | `hover` | Rest the pointer on an item to reveal a menu or a tooltip |
-| `show` | Bring the agent's tab to the front |
+| `show` | Bring the current tab to the front and focus the Chrome window |
 | `back` | Go back one page |
-| `close` | Close the agent's tab |
-| `status` | Report whether the extension is connected and what the tab shows |
+| `close` | Close one tab, or all of the agent's tabs |
+| `status` | Report whether the extension is connected, what the current tab shows, and how many tabs are open |
+
+Every tool that works in a tab takes an optional `tab_id`, from `tabs_context`. The named tab becomes the current tab. Without it, the tool works in the current tab.
 
 Doing several steps in one go matters more than it sounds. An agent pauses to think between every tool it uses, so three steps in one call is roughly three times quicker than three calls.
 
@@ -150,7 +154,7 @@ Doing several steps in one go matters more than it sounds. An agent pauses to th
 - Clicks and typing are simulated inside the page. A small number of sites ignore simulated input.
 - Pages that only load their content while you are looking at them can be slow in a background tab.
 - Chrome does not allow extensions to run on its own pages, such as `chrome://settings`, or on the Chrome Web Store.
-- One agent tab at a time.
+- Chrome puts a tab you open from one of the agent's tabs into the agent's group. The agent can then see that tab. Drag it out of the group to make it yours again.
 
 ## Develop
 
